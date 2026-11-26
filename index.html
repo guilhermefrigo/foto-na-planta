@@ -1,0 +1,1116 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<link rel="manifest" href="manifest.webmanifest"><link rel="icon" href="icon.svg">
+<style>html,body{margin:0}:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}</style>
+<title>Foto na Planta</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="theme-color" content="#0b5d73">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: biblioteca de pranchas em lista; visualizador em tela cheia com a planta ao centro e barra de ações embaixo */
+:root{
+  --bg:#eef1f0; --surface:#ffffff; --ink:#17222a; --muted:#5b6b73; --line:#d3dbdb;
+  --accent:#0b5d73; --accent-ink:#ffffff; --mark:#e2561b; --stage:#c7cfcf; --danger:#b3261e;
+  --sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0f1619; --surface:#172126; --ink:#e4ecee; --muted:#91a3aa; --line:#2a383e;
+  --accent:#4fb3c9; --accent-ink:#06222a; --mark:#ff7a3d; --stage:#0a0f11; --danger:#ff8a80; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0f1619; --surface:#172126; --ink:#e4ecee; --muted:#91a3aa; --line:#2a383e;
+  --accent:#4fb3c9; --accent-ink:#06222a; --mark:#ff7a3d; --stage:#0a0f11; --danger:#ff8a80; color-scheme:dark}
+html,body{height:100%}
+[hidden]{display:none!important}
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.45;overflow:hidden}
+button{font:inherit;color:inherit}
+button:focus-visible,label:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:0 16px;border-radius:10px;border:1px solid var(--line);background:var(--surface);cursor:pointer;font-weight:500;white-space:nowrap}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:600}
+.btn.shoot{background:var(--mark);border-color:var(--mark);color:#fff;font-weight:700}
+.btn.danger{color:var(--danger)}
+.btn.ghost{border-color:transparent;background:transparent}
+.btn:disabled{opacity:.45;cursor:default}
+.btn svg{width:20px;height:20px;flex:none}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+
+/* ---------- Biblioteca ---------- */
+#libView{height:100%;overflow-y:auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 40px}
+.lib-wrap{max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:20px}
+.lib-head{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.lib-head h1{margin:0;font-size:24px;letter-spacing:-.01em;text-wrap:balance}
+.lib-head p{margin:2px 0 0;color:var(--muted);font-size:14px}
+.eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent)}
+#pdfList{display:flex;flex-direction:column;gap:10px;list-style:none;margin:0;padding:0}
+.pdf-item{display:grid;grid-template-columns:112px 1fr auto;gap:14px;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px;cursor:pointer}
+.pdf-item img{width:112px;height:64px;object-fit:contain;background:#fff;border-radius:6px;border:1px solid var(--line)}
+.pdf-item .meta{min-width:0}
+.pdf-item .name{font-weight:600;overflow-wrap:anywhere}
+.pdf-item .sub{color:var(--muted);font-size:13px}
+.pdf-item .count{display:inline-flex;align-items:center;gap:4px;color:var(--mark);font-weight:600}
+.empty{background:var(--surface);border:1px dashed var(--line);border-radius:12px;padding:28px 20px;text-align:center;color:var(--muted)}
+.howto{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin:0;padding:0;list-style:none}
+.howto li{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 14px;font-size:14px;color:var(--muted)}
+.howto b{display:block;color:var(--ink);font-size:14px;margin-bottom:2px}
+.note{font-size:13px;color:var(--muted)}
+.confirm-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+
+/* ---------- Visualizador ---------- */
+#docView{position:fixed;inset:0;display:flex;flex-direction:column;background:var(--stage)}
+.topbar{display:flex;align-items:center;gap:6px;background:var(--surface);border-bottom:1px solid var(--line);padding-top:calc(6px + env(safe-area-inset-top,0px));padding-bottom:6px;padding-left:max(8px,env(safe-area-inset-left,0px));padding-right:max(8px,env(safe-area-inset-right,0px))}
+.topbar .title{flex:1;min-width:0;font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pager{display:flex;align-items:center;gap:2px}
+.pager select{min-height:40px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink);font:500 14px var(--sans);padding:0 6px;max-width:150px}
+.iconbtn{width:44px;height:44px;display:inline-flex;align-items:center;justify-content:center;border:0;background:transparent;border-radius:10px;cursor:pointer;flex:none}
+.iconbtn svg{width:22px;height:22px}
+.iconbtn:disabled{opacity:.35}
+#stage{position:relative;flex:1;overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none}
+#plan{position:absolute;left:0;top:0;transform-origin:0 0;background:#fff;box-shadow:0 2px 16px rgba(0,0,0,.25);image-rendering:auto}
+#overlay{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+#banner{position:absolute;left:max(10px,env(safe-area-inset-left,0px));right:max(10px,env(safe-area-inset-right,0px));top:10px;margin:0 auto;max-width:520px;background:var(--ink);color:var(--bg);border-radius:12px;padding:10px 14px;font-size:14px;box-shadow:0 4px 18px rgba(0,0,0,.25);pointer-events:none}
+#banner b{color:var(--mark)}
+#loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:14px;pointer-events:none}
+.compass-chip{position:absolute;right:max(10px,env(safe-area-inset-right,0px));bottom:10px;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:6px 12px;font-size:12px;display:flex;align-items:center;gap:6px;box-shadow:0 2px 10px rgba(0,0,0,.15)}
+.compass-chip .dot{width:8px;height:8px;border-radius:50%;background:var(--muted)}
+.compass-chip.live .dot{background:#2e9d5b}
+.bottombar{display:flex;gap:8px;align-items:center;justify-content:center;flex-wrap:wrap;background:var(--surface);border-top:1px solid var(--line);padding-top:8px;padding-bottom:calc(8px + env(safe-area-inset-bottom,0px));padding-left:max(10px,env(safe-area-inset-left,0px));padding-right:max(10px,env(safe-area-inset-right,0px))}
+.bottombar .grow{flex:1 1 140px;max-width:260px}
+
+/* ---------- Painéis ---------- */
+.sheet{position:fixed;left:0;right:0;bottom:0;max-height:62%;overflow-y:auto;background:var(--surface);border-top-left-radius:16px;border-top-right-radius:16px;box-shadow:0 -6px 30px rgba(0,0,0,.3);padding-top:14px;padding-bottom:calc(16px + env(safe-area-inset-bottom,0px));padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));z-index:20}
+.sheet-inner{max-width:640px;margin:0 auto;display:flex;flex-direction:column;gap:12px}
+.sheet-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.sheet-head h2{margin:0;font-size:17px}
+.photo-big{width:100%;max-height:30vh;object-fit:contain;background:#000;border-radius:10px;cursor:zoom-in}
+.facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.fact{background:var(--bg);border-radius:8px;padding:8px 10px}
+.fact .k{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.fact .v{font-weight:600;font-size:14px;overflow-wrap:anywhere}
+textarea{width:100%;min-height:64px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font:inherit;padding:8px 10px;resize:vertical;box-sizing:border-box}
+.actions{display:flex;gap:8px;flex-wrap:wrap}
+.thumbs{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px;list-style:none;margin:0;padding:0}
+.thumbs button{position:relative;padding:0;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#000;aspect-ratio:1;width:100%;cursor:pointer}
+.thumbs img{width:100%;height:100%;object-fit:cover;display:block}
+.thumbs .n{position:absolute;left:4px;top:4px;background:var(--mark);color:#fff;font:600 12px var(--mono);border-radius:999px;padding:1px 7px}
+#viewer{position:fixed;inset:0;background:#000;z-index:40;display:flex;align-items:center;justify-content:center}
+#viewer img{max-width:100%;max-height:100%;object-fit:contain}
+#viewer .iconbtn{position:absolute;top:calc(8px + env(safe-area-inset-top,0px));right:max(8px,env(safe-area-inset-right,0px));color:#fff;background:rgba(0,0,0,.5)}
+#toast{position:fixed;left:50%;bottom:calc(84px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:10px;font-size:14px;z-index:60;max-width:calc(100% - 32px);box-shadow:0 4px 18px rgba(0,0,0,.3)}
+.menu{position:absolute;right:max(8px,env(safe-area-inset-right,0px));top:calc(56px + env(safe-area-inset-top,0px));background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:0 8px 28px rgba(0,0,0,.25);z-index:30;display:flex;flex-direction:column;padding:6px;min-width:240px}
+.menu button{display:flex;align-items:center;gap:10px;min-height:44px;border:0;background:transparent;text-align:left;padding:0 12px;border-radius:8px;cursor:pointer}
+.menu button:hover{background:var(--bg)}
+.menu .sep{height:1px;background:var(--line);margin:4px 6px}
+.toggle{display:flex;align-items:center;gap:10px;min-height:44px;padding:0 12px;font-size:14px;cursor:pointer}
+.toggle input{width:20px;height:20px;accent-color:var(--accent);flex:none}
+#busy{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:70;display:flex;align-items:center;justify-content:center}
+.busy-box{background:var(--surface);border-radius:14px;padding:20px 24px;display:flex;align-items:center;gap:14px;max-width:calc(100% - 48px);font-weight:500}
+.spinner{width:24px;height:24px;border-radius:50%;border:3px solid var(--line);border-top-color:var(--accent);flex:none}
+@media (prefers-reduced-motion:no-preference){.spinner{animation:spin .8s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}}
+.lib-actions{display:flex;gap:8px;flex-wrap:wrap}
+.visually-hidden{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+@media (max-width:480px){
+  .pdf-item{grid-template-columns:84px 1fr auto}
+  .pdf-item img{width:84px;height:52px}
+  .facts{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .bottombar .btn{padding:0 12px}
+}
+@media (prefers-reduced-motion:no-preference){.sheet{animation:up .18s ease-out}@keyframes up{from{transform:translateY(24px);opacity:.6}}}
+</style>
+
+<!-- ================= Biblioteca ================= -->
+<section id="libView">
+  <div class="lib-wrap">
+    <div class="lib-head">
+      <div>
+        <div class="eyebrow">Levantamento fotográfico</div>
+        <h1>Biblioteca de plantas</h1>
+        <p>Os PDFs e as fotos ficam guardados neste aparelho.</p>
+      </div>
+      <div class="lib-actions">
+        <label class="btn" for="zipInput" tabindex="0">Restaurar backup (.zip)</label>
+        <label class="btn primary" for="pdfInput" tabindex="0">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+          Importar PDF
+        </label>
+      </div>
+      <input id="pdfInput" class="visually-hidden" type="file" accept="application/pdf,.pdf" multiple>
+      <input id="zipInput" class="visually-hidden" type="file" accept=".zip,application/zip">
+    </div>
+    <ul id="pdfList"></ul>
+    <div id="libEmpty" class="empty" hidden>Nenhuma planta ainda. Toque em <b>Importar PDF</b> para adicionar a primeira.</div>
+    <ul class="howto">
+      <li><b>1. Abra a planta</b>Escolha o PDF e a página (prancha) onde você está.</li>
+      <li><b>2. Marque onde você está</b>Toque em Nova foto e depois no ponto da planta.</li>
+      <li><b>3. Tire a foto ou grave um vídeo</b>Aponte o celular para o que vai registrar. A seta segue a bússola e fica gravada junto.</li>
+      <li><b>4. Exporte</b>No menu ⋮ da planta: relatório em PDF ou pacote .zip com fotos, planilha e backup.</li>
+    </ul>
+    <p class="note" id="storageNote"></p>
+  </div>
+</section>
+
+<!-- ================= Visualizador ================= -->
+<section id="docView" hidden>
+  <div class="topbar">
+    <button class="iconbtn" id="backBtn" aria-label="Voltar para a biblioteca"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button>
+    <div class="title" id="docTitle"></div>
+    <div class="pager">
+      <button class="iconbtn" id="prevPage" aria-label="Página anterior"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 7l-5 5 5 5"/></svg></button>
+      <select id="pageSel" aria-label="Página"></select>
+      <button class="iconbtn" id="nextPage" aria-label="Próxima página"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10 7l5 5-5 5"/></svg></button>
+    </div>
+    <button class="iconbtn" id="menuBtn" aria-label="Mais opções"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg></button>
+  </div>
+  <div id="stage">
+    <canvas id="plan"></canvas>
+    <canvas id="overlay"></canvas>
+    <div id="loading">Carregando planta…</div>
+    <div id="banner" hidden></div>
+    <div class="compass-chip" id="compassChip" hidden><span class="dot"></span><span id="compassTxt">Bússola</span></div>
+  </div>
+  <div class="bottombar" id="barView">
+    <button class="btn" id="listBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg><span id="listLbl">Fotos</span></button>
+    <button class="btn shoot grow" id="newBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>Nova foto</button>
+    <button class="btn" id="fitBtn" aria-label="Enquadrar planta"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+  </div>
+  <div class="bottombar" id="barPlace" hidden>
+    <button class="btn ghost" id="cancelPlace">Cancelar</button>
+    <button class="btn" id="gpsBtn" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="7"/></svg>GPS</button>
+    <button class="btn" id="videoBtn" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3z"/></svg>Vídeo</button>
+    <button class="btn" id="galleryBtn" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 16l5-5 4 4 3-3 6 6"/></svg>Galeria</button>
+    <button class="btn shoot grow" id="shootBtn" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>Tirar foto</button>
+  </div>
+  <div class="bottombar" id="barEdit" hidden>
+    <button class="btn ghost" id="cancelEdit">Cancelar</button>
+    <button class="btn primary grow" id="saveEdit">Salvar posição e direção</button>
+  </div>
+  <div class="bottombar" id="barPath" hidden>
+    <button class="btn ghost" id="cancelPath">Cancelar</button>
+    <button class="btn" id="undoPath">Desfazer ponto</button>
+    <button class="btn primary grow" id="savePath">Salvar trajeto</button>
+  </div>
+  <div class="bottombar" id="barCal" hidden>
+    <button class="btn ghost danger" id="clearCal">Apagar pontos</button>
+    <button class="btn primary grow" id="doneCal">Concluir</button>
+  </div>
+  <input id="camInput" class="visually-hidden" type="file" accept="image/*" capture="environment">
+  <input id="vidInput" class="visually-hidden" type="file" accept="video/*" capture="environment">
+  <input id="galInput" class="visually-hidden" type="file" accept="image/*,video/*">
+</section>
+
+<div id="menu" class="menu" hidden>
+  <button id="mCal"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="7"/></svg>Calibrar GPS nesta página</button>
+  <button id="mNorth"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3l4 18-4-4-4 4z"/></svg>Zerar calibração da bússola</button>
+  <div class="sep"></div>
+  <button id="mExport"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>Salvar esta página marcada (PNG)</button>
+  <button id="mReport"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M6 3h9l4 4v14H6z"/><path d="M9 12h7M9 16h7M9 8h3"/></svg>Relatório PDF (plantas + fotos)</button>
+  <button id="mZip"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M4 7l2-3h12l2 3v13H4z"/><path d="M4 7h16M12 4v10"/></svg>Exportar tudo (.zip)</button>
+  <div class="sep"></div>
+  <label class="toggle"><input type="checkbox" id="optCopy"> Salvar cópia de cada foto no celular</label>
+  <label class="toggle"><input type="checkbox" id="optReduce"> Reduzir fotos ao salvar (economiza espaço)</label>
+</div>
+<div id="busy" hidden><div class="busy-box"><div class="spinner"></div><div id="busyTxt">Gerando…</div></div></div>
+
+<div id="sheet" class="sheet" hidden><div class="sheet-inner" id="sheetInner"></div></div>
+<div id="viewer" hidden><img id="viewerImg" alt="Foto em tela cheia"><button class="iconbtn" id="viewerClose" aria-label="Fechar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+<div id="toast" hidden></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>
+"use strict";
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = "pdf.worker.min.js";
+
+/* ===================== Armazenamento (IndexedDB) ===================== */
+let dbp;
+function idb() {
+  if (!dbp) dbp = new Promise((res, rej) => {
+    const r = indexedDB.open("foto-na-planta", 1);
+    r.onupgradeneeded = () => {
+      const d = r.result;
+      d.createObjectStore("pdfs", { keyPath: "id" });
+      d.createObjectStore("files", { keyPath: "id" });
+      d.createObjectStore("photos", { keyPath: "id" }).createIndex("pdf", "pdfId");
+      d.createObjectStore("pages", { keyPath: "key" });
+    };
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  });
+  return dbp;
+}
+async function tx(store, mode, fn) {
+  const d = await idb();
+  return new Promise((res, rej) => {
+    const t = d.transaction(store, mode), s = t.objectStore(store);
+    let out; const r = fn(s);
+    if (r) r.onsuccess = () => { out = r.result; };
+    t.oncomplete = () => res(out);
+    t.onerror = () => rej(t.error); t.onabort = () => rej(t.error);
+  });
+}
+const put = (st, v) => tx(st, "readwrite", s => s.put(v));
+const get = (st, k) => tx(st, "readonly", s => s.get(k));
+const del = (st, k) => tx(st, "readwrite", s => s.delete(k));
+const all = st => tx(st, "readonly", s => s.getAll());
+const photosOf = pdfId => tx("photos", "readonly", s => s.index("pdf").getAll(pdfId));
+
+/* ===================== Utilidades ===================== */
+let toastT;
+function toast(msg, ms = 2600) {
+  const t = $("#toast"); t.textContent = msg; t.hidden = false;
+  clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, ms);
+}
+const fmtSize = b => b > 1e6 ? (b / 1e6).toFixed(1).replace(".", ",") + " MB" : Math.max(1, Math.round(b / 1e3)) + " kB";
+const norm360 = a => ((a % 360) + 360) % 360;
+const DIRS = ["N", "NE", "L", "SE", "S", "SO", "O", "NO"];
+const fmtDate = ts => new Date(ts).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+function blobToCanvasThumb(blob, max, q = .8) {
+  return createImageBitmap(blob, { imageOrientation: "from-image" }).catch(() => createImageBitmap(blob)).then(bmp => {
+    const s = Math.min(1, max / Math.max(bmp.width, bmp.height));
+    const c = document.createElement("canvas"); c.width = Math.round(bmp.width * s); c.height = Math.round(bmp.height * s);
+    c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height); bmp.close && bmp.close();
+    return new Promise(r => c.toBlob(r, "image/jpeg", q));
+  });
+}
+let downloadsP = null;
+async function saveFile(filename, blob) {
+  try {
+    if (window.claude?.use) {
+      downloadsP = downloadsP || window.claude.use("downloads");
+      const d = await downloadsP;
+      if (d) { await d.save({ filename, data: blob }); toast("Arquivo salvo"); return; }
+    }
+  } catch (e) {
+    if (e && e.code === "declined") return;
+    if (e && e.code === "host_unavailable") { toast("Este app não salva arquivos. Abra a página no navegador do celular."); return; }
+  }
+  try {
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  } catch { toast("Não foi possível salvar o arquivo aqui."); }
+}
+
+/* ===================== Biblioteca ===================== */
+async function importPdf(file, name) {
+  const buf = await file.arrayBuffer();
+  const doc = await pdfjsLib.getDocument({ data: buf.slice(0) }).promise;
+  const page = await doc.getPage(1);
+  const vp0 = page.getViewport({ scale: 1 });
+  const vp = page.getViewport({ scale: 320 / Math.max(vp0.width, vp0.height) });
+  const c = document.createElement("canvas"); c.width = Math.ceil(vp.width); c.height = Math.ceil(vp.height);
+  const ctx = c.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, c.width, c.height);
+  await page.render({ canvasContext: ctx, viewport: vp }).promise;
+  const thumb = await new Promise(r => c.toBlob(r, "image/jpeg", .82));
+  const id = uid();
+  await put("files", { id, data: new Blob([buf], { type: "application/pdf" }) });
+  await put("pdfs", { id, name: name || file.name || "planta.pdf", size: buf.byteLength, pages: doc.numPages, thumb, created: Date.now() });
+  doc.destroy();
+  return id;
+}
+let thumbUrls = [];
+async function renderLibrary() {
+  const [pdfs, photos] = await Promise.all([all("pdfs"), all("photos")]);
+  const counts = {}; photos.forEach(p => counts[p.pdfId] = (counts[p.pdfId] || 0) + 1);
+  thumbUrls.forEach(u => URL.revokeObjectURL(u)); thumbUrls = [];
+  pdfs.sort((a, b) => b.created - a.created);
+  const ul = $("#pdfList"); ul.innerHTML = "";
+  $("#libEmpty").hidden = pdfs.length > 0;
+  for (const p of pdfs) {
+    const li = document.createElement("li"); li.className = "pdf-item"; li.tabIndex = 0;
+    const url = p.thumb ? URL.createObjectURL(p.thumb) : ""; if (url) thumbUrls.push(url);
+    const n = counts[p.id] || 0;
+    li.innerHTML = `<img alt="" src="${url}"><div class="meta"><div class="name"></div>
+      <div class="sub">${p.pages} ${p.pages === 1 ? "página" : "páginas"} · ${fmtSize(p.size)}${n ? ` · <span class="count">${n} ${n === 1 ? "foto" : "fotos"}</span>` : ""}</div></div>
+      <button class="iconbtn del" aria-label="Excluir"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></button>`;
+    li.querySelector(".name").textContent = p.name;
+    li.addEventListener("click", e => { if (!e.target.closest(".del, .confirm-row")) openDoc(p.id); });
+    li.addEventListener("keydown", e => { if (e.key === "Enter" && e.target === li) openDoc(p.id); });
+    li.querySelector(".del").addEventListener("click", e => {
+      e.stopPropagation();
+      const meta = li.querySelector(".meta");
+      if (meta.querySelector(".confirm-row")) return;
+      const row = document.createElement("div"); row.className = "confirm-row";
+      row.innerHTML = `<span class="sub">Excluir a planta${n ? ` e as ${n} fotos` : ""}?</span><button class="btn danger">Excluir</button><button class="btn ghost">Não</button>`;
+      row.children[1].onclick = async ev => { ev.stopPropagation(); await deletePdf(p.id); renderLibrary(); };
+      row.children[2].onclick = ev => { ev.stopPropagation(); row.remove(); };
+      meta.appendChild(row);
+    });
+    ul.appendChild(li);
+  }
+}
+async function deletePdf(id) {
+  const ph = await photosOf(id);
+  await tx("photos", "readwrite", s => { ph.forEach(p => s.delete(p.id)); });
+  await del("files", id); await del("pdfs", id);
+  const pages = await all("pages");
+  await tx("pages", "readwrite", s => { pages.filter(p => p.key.startsWith(id + ":")).forEach(p => s.delete(p.key)); });
+}
+$("#pdfInput").addEventListener("change", async e => {
+  const files = [...e.target.files]; e.target.value = "";
+  for (const f of files) {
+    toast("Importando " + f.name + "…", 60000);
+    try { await importPdf(f); toast("Planta importada"); }
+    catch (err) { console.error(err); toast("Não consegui abrir " + f.name + ". O arquivo é um PDF válido?", 5000); }
+  }
+  renderLibrary();
+});
+$('label[for="pdfInput"]').addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); $("#pdfInput").click(); } });
+
+async function seedSample() {
+  let seeded = false; try { seeded = localStorage.getItem("fnp-seeded") === "1"; } catch {}
+  if (seeded) return;
+  const pdfs = await all("pdfs"); if (pdfs.length) return;
+  try {
+    const r = await fetch("exemplo.pdf"); if (!r.ok) return;
+    toast("Carregando a planta de exemplo…", 60000);
+    await importPdf(await r.blob(), "UBS Cooper – traçado de campo (exemplo).pdf");
+    try { localStorage.setItem("fnp-seeded", "1"); } catch {}
+    toast("Planta de exemplo carregada");
+  } catch (e) { console.warn(e); }
+}
+
+/* ===================== Visualizador ===================== */
+const plan = $("#plan"), overlay = $("#overlay"), stage = $("#stage");
+const S = {
+  pdf: null, doc: null, pageNum: 1, W: 1, H: 1, view: { s: 1, x: 0, y: 0 },
+  photos: [], pagePhotos: [], cfg: null, mode: "view", draft: null, sel: null, renderTask: null, gps: null
+};
+const pageKey = () => S.pdf.id + ":" + S.pageNum;
+
+async function openDoc(id) {
+  const meta = await get("pdfs", id); const file = await get("files", id);
+  if (!meta || !file) { toast("Planta não encontrada"); return; }
+  S.pdf = meta; S.sel = null;
+  $("#libView").hidden = true; $("#docView").hidden = false;
+  $("#docTitle").textContent = meta.name;
+  $("#loading").hidden = false; $("#loading").textContent = "Carregando planta…";
+  if (S.doc) { S.doc.destroy(); S.doc = null; }
+  S.doc = await pdfjsLib.getDocument({ data: await file.data.arrayBuffer() }).promise;
+  S.photos = await photosOf(id);
+  let last = 1; try { last = +localStorage.getItem("fnp-page-" + id) || 1; } catch {}
+  await showPage(Math.min(last, S.doc.numPages));
+  try { navigator.storage?.persist?.(); } catch {}
+}
+function buildPageSel() {
+  const sel = $("#pageSel"); sel.innerHTML = "";
+  for (let i = 1; i <= S.doc.numPages; i++) {
+    const n = S.photos.filter(p => p.page === i).length;
+    const o = document.createElement("option"); o.value = i;
+    o.textContent = `Pág. ${i}/${S.doc.numPages}${n ? ` · ${n} foto${n > 1 ? "s" : ""}` : ""}`;
+    sel.appendChild(o);
+  }
+  sel.value = S.pageNum;
+  $("#prevPage").disabled = S.pageNum <= 1; $("#nextPage").disabled = S.pageNum >= S.doc.numPages;
+}
+async function showPage(n) {
+  setMode("view"); closeSheet();
+  S.pageNum = n; try { localStorage.setItem("fnp-page-" + S.pdf.id, n); } catch {}
+  S.pagePhotos = S.photos.filter(p => p.page === n);
+  S.cfg = (await get("pages", pageKey())) || { key: pageKey(), north: null, gcp: [] };
+  buildPageSel(); updateListLbl(); updateGpsBtn();
+  $("#loading").hidden = false;
+  if (S.renderTask) { try { S.renderTask.cancel(); } catch {} }
+  const page = await S.doc.getPage(n);
+  const vp1 = page.getViewport({ scale: 1 });
+  // resolução: até ~4800 px no maior lado e até ~14 Mpx (limite seguro de canvas no Android)
+  let sc = Math.min(4800 / Math.max(vp1.width, vp1.height), Math.sqrt(14e6 / (vp1.width * vp1.height)));
+  sc = Math.max(sc, 0.5);
+  const vp = page.getViewport({ scale: sc });
+  plan.width = Math.floor(vp.width); plan.height = Math.floor(vp.height);
+  plan.style.width = plan.width + "px"; plan.style.height = plan.height + "px";
+  S.W = plan.width; S.H = plan.height;
+  const ctx = plan.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, S.W, S.H);
+  fit(); draw();
+  S.renderTask = page.render({ canvasContext: ctx, viewport: vp });
+  try { await S.renderTask.promise; $("#loading").hidden = true; }
+  catch (e) { if (e?.name !== "RenderingCancelledException") { $("#loading").textContent = "Erro ao desenhar a página."; console.error(e); } }
+  draw();
+}
+function updateListLbl() { $("#listLbl").textContent = `Fotos (${S.pagePhotos.length})`; }
+$("#pageSel").onchange = e => showPage(+e.target.value);
+$("#prevPage").onclick = () => S.pageNum > 1 && showPage(S.pageNum - 1);
+$("#nextPage").onclick = () => S.pageNum < S.doc.numPages && showPage(S.pageNum + 1);
+$("#backBtn").onclick = () => { setMode("view"); closeSheet(); $("#docView").hidden = true; $("#libView").hidden = false; renderLibrary(); };
+
+/* ---------- câmera da planta: pan / zoom ---------- */
+function stageSize() { const r = stage.getBoundingClientRect(); return { w: r.width, h: r.height, r }; }
+function fit() {
+  const { w, h } = stageSize(); const pad = 12;
+  const s = Math.min((w - pad * 2) / S.W, (h - pad * 2) / S.H);
+  S.view = { s, x: (w - S.W * s) / 2, y: (h - S.H * s) / 2 }; applyView();
+}
+function applyView() { plan.style.transform = `translate(${S.view.x}px,${S.view.y}px) scale(${S.view.s})`; draw(); }
+function zoomAt(f, sx, sy) {
+  const { w, h } = stageSize(); const v = S.view;
+  const minS = Math.min(w / S.W, h / S.H) * 0.5, maxS = 4;
+  const ns = Math.min(maxS, Math.max(minS, v.s * f)); f = ns / v.s;
+  v.x = sx - (sx - v.x) * f; v.y = sy - (sy - v.y) * f; v.s = ns; applyView();
+}
+const toScreen = (u, v) => ({ x: S.view.x + u * S.W * S.view.s, y: S.view.y + v * S.H * S.view.s });
+const toPage = (x, y) => ({ u: (x - S.view.x) / (S.W * S.view.s), v: (y - S.view.y) / (S.H * S.view.s) });
+$("#fitBtn").onclick = fit;
+window.addEventListener("resize", () => { if (!$("#docView").hidden) { draw(); } });
+
+const ptrs = new Map(); let gesture = null;
+stage.addEventListener("pointerdown", e => {
+  stage.setPointerCapture(e.pointerId);
+  const r = stage.getBoundingClientRect(); const p = { x: e.clientX - r.left, y: e.clientY - r.top };
+  ptrs.set(e.pointerId, p);
+  if (ptrs.size === 1) {
+    gesture = { type: "pan", start: p, last: p, t: Date.now(), moved: false };
+    const d = S.draft;
+    if (d && d.u != null && (S.mode === "place" || S.mode === "edit")) {
+      const c = toScreen(d.u, d.v); const tip = arrowTip(c, d.angle);
+      if (Math.hypot(p.x - tip.x, p.y - tip.y) < 30) gesture.type = "rotate";
+      else if (Math.hypot(p.x - c.x, p.y - c.y) < 26) gesture.type = "move";
+    }
+  } else if (ptrs.size === 2) {
+    const [a, b] = [...ptrs.values()];
+    gesture = { type: "pinch", d: Math.hypot(a.x - b.x, a.y - b.y), m: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, moved: true };
+  }
+});
+stage.addEventListener("pointermove", e => {
+  if (!ptrs.has(e.pointerId) || !gesture) return;
+  const r = stage.getBoundingClientRect(); const p = { x: e.clientX - r.left, y: e.clientY - r.top };
+  ptrs.set(e.pointerId, p);
+  if (gesture.type === "pinch" && ptrs.size >= 2) {
+    const [a, b] = [...ptrs.values()];
+    const d = Math.hypot(a.x - b.x, a.y - b.y), m = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    S.view.x += m.x - gesture.m.x; S.view.y += m.y - gesture.m.y;
+    zoomAt(d / gesture.d, m.x, m.y); gesture.d = d; gesture.m = m; return;
+  }
+  if (Math.hypot(p.x - gesture.start.x, p.y - gesture.start.y) > 6) gesture.moved = true;
+  if (gesture.type === "pan") { S.view.x += p.x - gesture.last.x; S.view.y += p.y - gesture.last.y; applyView(); }
+  else if (gesture.type === "rotate") {
+    const c = toScreen(S.draft.u, S.draft.v);
+    S.draft.angle = norm360(Math.atan2(p.x - c.x, -(p.y - c.y)) * 180 / Math.PI);
+    S.draft.manual = true; draw(); updateCompassChip();
+  } else if (gesture.type === "move") {
+    const q = toPage(p.x, p.y); S.draft.u = clamp01(q.u); S.draft.v = clamp01(q.v); draw();
+  }
+  gesture.last = p;
+});
+function endPtr(e) {
+  if (!ptrs.has(e.pointerId)) return;
+  ptrs.delete(e.pointerId);
+  if (gesture && ptrs.size === 0) {
+    if (!gesture.moved && gesture.type !== "pinch" && Date.now() - gesture.t < 500) onTap(gesture.start.x, gesture.start.y);
+    gesture = null;
+  } else if (ptrs.size === 1 && gesture?.type === "pinch") {
+    const p = [...ptrs.values()][0]; gesture = { type: "pan", start: p, last: p, t: 0, moved: true };
+  }
+}
+stage.addEventListener("pointerup", endPtr); stage.addEventListener("pointercancel", endPtr);
+stage.addEventListener("wheel", e => { e.preventDefault(); const r = stage.getBoundingClientRect(); zoomAt(Math.exp(-e.deltaY * 0.0015), e.clientX - r.left, e.clientY - r.top); }, { passive: false });
+const clamp01 = x => Math.min(1, Math.max(0, x));
+
+function onTap(x, y) {
+  const q = toPage(x, y); const inside = q.u >= 0 && q.u <= 1 && q.v >= 0 && q.v <= 1;
+  if (S.mode === "view") {
+    let best = null, bd = 28;
+    for (const p of S.pagePhotos) { const c = toScreen(p.u, p.v); const d = Math.hypot(c.x - x, c.y - y); if (d < bd) { bd = d; best = p; } }
+    if (best) { S.sel = best.id; draw(); openPhotoSheet(best); }
+    else if (S.sel) { S.sel = null; closeSheet(); draw(); }
+  } else if ((S.mode === "place" || S.mode === "edit") && inside) {
+    S.draft.u = q.u; S.draft.v = q.v; S.draft.posSrc = "toque";
+    setPlaceBanner(); enableShoot(); draw();
+  } else if (S.mode === "path" && inside) {
+    S.draft.path.push({ u: q.u, v: q.v }); updatePathBanner(); draw();
+  } else if (S.mode === "cal" && inside) {
+    addCalPoint(q.u, q.v);
+  }
+}
+
+/* ---------- desenho dos marcadores ---------- */
+const ARROW = 54;
+function arrowTip(c, ang) { const a = ang * Math.PI / 180; return { x: c.x + Math.sin(a) * ARROW, y: c.y - Math.cos(a) * ARROW }; }
+function css(v) { return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+function drawMarker(ctx, c, ang, label, opt = {}) {
+  const color = opt.color || css("--mark");
+  const a = ang * Math.PI / 180, half = 26 * Math.PI / 180;
+  if (ang != null) {
+    // cone de visão
+    ctx.beginPath(); ctx.moveTo(c.x, c.y);
+    ctx.arc(c.x, c.y, ARROW + 18, a - Math.PI / 2 - half, a - Math.PI / 2 + half);
+    ctx.closePath(); ctx.fillStyle = color + (opt.active ? "55" : "33"); ctx.fill();
+    // seta
+    const tip = arrowTip(c, ang);
+    ctx.strokeStyle = color; ctx.lineWidth = 3.5; ctx.lineCap = "round";
+    ctx.beginPath(); ctx.moveTo(c.x, c.y); ctx.lineTo(tip.x, tip.y); ctx.stroke();
+    const hx = Math.sin(a), hy = -Math.cos(a), px = -hy, py = hx;
+    ctx.beginPath(); ctx.moveTo(tip.x + hx * 6, tip.y + hy * 6);
+    ctx.lineTo(tip.x - hx * 9 + px * 8, tip.y - hy * 9 + py * 8);
+    ctx.lineTo(tip.x - hx * 9 - px * 8, tip.y - hy * 9 - py * 8); ctx.closePath();
+    ctx.fillStyle = color; ctx.fill();
+    if (opt.handle) {
+      ctx.beginPath(); ctx.arc(tip.x, tip.y, 15, 0, Math.PI * 2);
+      ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.setLineDash([4, 3]); ctx.stroke(); ctx.setLineDash([]);
+    }
+  }
+  ctx.beginPath(); ctx.arc(c.x, c.y, opt.active ? 15 : 13, 0, Math.PI * 2);
+  ctx.fillStyle = color; ctx.fill(); ctx.lineWidth = 2.5; ctx.strokeStyle = "#fff"; ctx.stroke();
+  ctx.fillStyle = "#fff"; ctx.font = "600 12px 'IBM Plex Mono', monospace"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.fillText(label, c.x, c.y + .5);
+}
+function drawPath(ctx, pts, color, editing, lw = 3.5) {
+  if (pts.length < 2) return;
+  ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = lw; ctx.lineJoin = "round"; ctx.lineCap = "round"; ctx.setLineDash([lw * 3, lw * 2.2]);
+  ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y); for (const q of pts.slice(1)) ctx.lineTo(q.x, q.y); ctx.stroke(); ctx.setLineDash([]);
+  const a = pts[pts.length - 2], b = pts[pts.length - 1], ang = Math.atan2(b.y - a.y, b.x - a.x), L = lw * 4.2;
+  ctx.fillStyle = color; ctx.beginPath(); ctx.moveTo(b.x, b.y);
+  ctx.lineTo(b.x - L * Math.cos(ang - .45), b.y - L * Math.sin(ang - .45)); ctx.lineTo(b.x - L * Math.cos(ang + .45), b.y - L * Math.sin(ang + .45)); ctx.closePath(); ctx.fill();
+  if (editing) for (const q of pts.slice(1)) { ctx.beginPath(); ctx.arc(q.x, q.y, 6, 0, Math.PI * 2); ctx.fillStyle = "#fff"; ctx.fill(); ctx.lineWidth = 2.5; ctx.strokeStyle = color; ctx.stroke(); }
+  ctx.restore();
+}
+function draw() {
+  if ($("#docView").hidden) return;
+  const { w, h } = stageSize(); const dpr = window.devicePixelRatio || 1;
+  if (overlay.width !== Math.round(w * dpr) || overlay.height !== Math.round(h * dpr)) { overlay.width = Math.round(w * dpr); overlay.height = Math.round(h * dpr); }
+  const ctx = overlay.getContext("2d"); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, w, h);
+  const editingId = S.mode === "edit" ? S.draft?.id : null;
+  for (const p of S.pagePhotos) {
+    const path = S.mode === "path" && S.draft?.id === p.id ? S.draft.path : p.path;
+    if (!path?.length) continue;
+    ctx.globalAlpha = S.mode === "view" || S.mode === "path" ? 1 : .55;
+    drawPath(ctx, [p, ...path].map(q => toScreen(q.u, q.v)), css("--mark"), S.mode === "path" && S.draft?.id === p.id);
+  }
+  ctx.globalAlpha = 1;
+  for (const p of S.pagePhotos) {
+    if (p.id === editingId) continue;
+    const c = toScreen(p.u, p.v); if (c.x < -100 || c.y < -100 || c.x > w + 100 || c.y > h + 100) continue;
+    ctx.globalAlpha = S.mode === "view" || (S.mode === "path" && S.draft?.id === p.id) ? 1 : .55;
+    drawMarker(ctx, c, p.angle, String(p.num), { active: p.id === S.sel });
+  }
+  ctx.globalAlpha = 1;
+  if (S.mode === "cal" || (S.cfg?.gcp?.length && S.mode !== "view")) {
+    for (const g of S.cfg.gcp) {
+      const c = toScreen(g.u, g.v); ctx.strokeStyle = css("--accent"); ctx.lineWidth = 2.5;
+      ctx.beginPath(); ctx.arc(c.x, c.y, 10, 0, Math.PI * 2); ctx.moveTo(c.x - 16, c.y); ctx.lineTo(c.x + 16, c.y); ctx.moveTo(c.x, c.y - 16); ctx.lineTo(c.x, c.y + 16); ctx.stroke();
+    }
+  }
+  if (S.draft && S.draft.u != null) drawMarker(ctx, toScreen(S.draft.u, S.draft.v), S.draft.angle, S.draft.num != null ? String(S.draft.num) : "+", { active: true, handle: true, color: css("--accent") });
+}
+
+/* ---------- bússola ---------- */
+const C = { heading: null, absolute: false, t: 0, listening: false };
+function headingFrom(e) {
+  if (typeof e.webkitCompassHeading === "number") return e.webkitCompassHeading; // iOS
+  if (e.alpha == null) return null;
+  const d2r = Math.PI / 180, al = e.alpha * d2r, be = (e.beta || 0) * d2r, ga = (e.gamma || 0) * d2r;
+  // direção para onde aponta a câmera traseira (eixo -Z do aparelho)
+  const r13 = Math.cos(al) * Math.sin(ga) + Math.cos(ga) * Math.sin(al) * Math.sin(be);
+  const r23 = Math.sin(al) * Math.sin(ga) - Math.cos(al) * Math.cos(ga) * Math.sin(be);
+  const r33 = Math.cos(be) * Math.cos(ga);
+  if (Math.abs(r33) > 0.85) return norm360(360 - e.alpha); // celular deitado: usa o topo do aparelho
+  return norm360(Math.atan2(-r13, -r23) / d2r);
+}
+function onOrient(e) {
+  if (e.type === "deviceorientation" && C.absolute) return;
+  if (e.type === "deviceorientationabsolute") C.absolute = true;
+  else if (!e.absolute && typeof e.webkitCompassHeading !== "number") return;
+  const h = headingFrom(e); if (h == null || isNaN(h)) return;
+  C.heading = C.heading == null ? h : norm360(C.heading + ((((h - C.heading) % 360) + 540) % 360 - 180) * 0.35);
+  C.t = Date.now();
+  if (S.draft && !S.draft.manual && (S.mode === "place") && S.cfg?.north != null) { S.draft.angle = planAngle(C.heading); draw(); }
+  updateCompassChip();
+}
+async function startCompass() {
+  if (C.listening) return; C.listening = true;
+  try {
+    if (typeof DeviceOrientationEvent !== "undefined" && typeof DeviceOrientationEvent.requestPermission === "function") {
+      const r = await DeviceOrientationEvent.requestPermission(); if (r !== "granted") return;
+    }
+    window.addEventListener("deviceorientationabsolute", onOrient);
+    window.addEventListener("deviceorientation", onOrient);
+  } catch (e) { console.warn(e); }
+}
+const compassLive = () => C.heading != null && Date.now() - C.t < 3000;
+const planAngle = h => norm360(h + (S.cfg?.north || 0));
+function updateCompassChip() {
+  const chip = $("#compassChip");
+  if (S.mode !== "place" && S.mode !== "edit") { chip.hidden = true; return; }
+  chip.hidden = false; chip.classList.toggle("live", compassLive());
+  let t;
+  if (!compassLive()) t = "Sem bússola · ajuste a seta arrastando a ponta";
+  else if (S.cfg?.north == null) t = `Bússola ${Math.round(C.heading)}° · ajuste a seta uma vez para calibrar`;
+  else t = `Bússola ${Math.round(C.heading)}° ${DIRS[Math.round(C.heading / 45) % 8]}${S.draft?.manual ? " · seta ajustada à mão" : " · seta seguindo"}`;
+  $("#compassTxt").textContent = t;
+}
+setInterval(() => { if (S.mode === "place" || S.mode === "edit") updateCompassChip(); }, 1500);
+
+/* ---------- GPS ---------- */
+let gpsWatch = null;
+function startGps() {
+  if (gpsWatch != null || !navigator.geolocation) return;
+  try {
+    gpsWatch = navigator.geolocation.watchPosition(p => { S.gps = { lat: p.coords.latitude, lon: p.coords.longitude, acc: p.coords.accuracy, t: Date.now() }; updateCalBanner(); },
+      () => { S.gps = null; updateCalBanner(); }, { enableHighAccuracy: true, maximumAge: 2000, timeout: 20000 });
+  } catch { gpsWatch = null; }
+}
+function stopGps() { if (gpsWatch != null) { navigator.geolocation.clearWatch(gpsWatch); gpsWatch = null; } }
+const gpsFresh = () => S.gps && Date.now() - S.gps.t < 15000;
+function toMeters(lat, lon, o) { return { x: (lon - o.lon) * Math.cos(o.lat * Math.PI / 180) * 111320, y: -(lat - o.lat) * 110540 }; }
+function fitGps(gcp) {
+  // similaridade (escala + rotação + translação) de metros locais para pixels da página
+  if (!gcp || gcp.length < 2) return null;
+  const o = gcp[0]; const E = gcp.map(g => toMeters(g.lat, g.lon, o)); const P = gcp.map(g => ({ x: g.u * S.W, y: g.v * S.H }));
+  const n = gcp.length; const me = { x: 0, y: 0 }, mp = { x: 0, y: 0 };
+  E.forEach(e => { me.x += e.x / n; me.y += e.y / n; }); P.forEach(p => { mp.x += p.x / n; mp.y += p.y / n; });
+  let ar = 0, ai = 0, den = 0;
+  for (let i = 0; i < n; i++) {
+    const ex = E[i].x - me.x, ey = E[i].y - me.y, px = P[i].x - mp.x, py = P[i].y - mp.y;
+    ar += ex * px + ey * py; ai += ex * py - ey * px; den += ex * ex + ey * ey;
+  }
+  if (den < 4) return null; // pontos muito próximos (< 2 m)
+  ar /= den; ai /= den;
+  const map = (lat, lon) => { const e = toMeters(lat, lon, o); const ex = e.x - me.x, ey = e.y - me.y; return { u: (mp.x + ar * ex - ai * ey) / S.W, v: (mp.y + ai * ex + ar * ey) / S.H }; };
+  return { map, rot: Math.atan2(ai, ar) * 180 / Math.PI, scale: Math.hypot(ar, ai) };
+}
+function updateGpsBtn() { const f = fitGps(S.cfg?.gcp); $("#gpsBtn").hidden = !f; }
+$("#gpsBtn").onclick = () => {
+  const f = fitGps(S.cfg.gcp); if (!f) return;
+  if (!gpsFresh()) { startGps(); toast("Aguardando o GPS… tente de novo em alguns segundos."); return; }
+  const q = f.map(S.gps.lat, S.gps.lon);
+  if (q.u < -0.05 || q.u > 1.05 || q.v < -0.05 || q.v > 1.05) { toast("Pelo GPS você está fora desta planta."); return; }
+  S.draft.u = clamp01(q.u); S.draft.v = clamp01(q.v); S.draft.posSrc = "GPS"; S.draft.gps = { ...S.gps };
+  enableShoot(); setPlaceBanner(); draw(); toast(`Posição pelo GPS (±${Math.round(S.gps.acc)} m). Toque na planta para corrigir.`);
+};
+
+/* ---------- modos ---------- */
+function setMode(m) {
+  S.mode = m;
+  $("#barView").hidden = m !== "view"; $("#barPlace").hidden = m !== "place"; $("#barEdit").hidden = m !== "edit"; $("#barCal").hidden = m !== "cal"; $("#barPath").hidden = m !== "path";
+  if (m === "view") { S.draft = null; $("#banner").hidden = true; stopGps(); }
+  updateCompassChip(); draw();
+}
+function setPlaceBanner() {
+  const b = $("#banner"); b.hidden = false;
+  if (S.draft.u == null) b.innerHTML = "<b>1.</b> Toque na planta no ponto onde você está.";
+  else if (S.mode === "edit") b.innerHTML = "Arraste o círculo para mover e a <b>ponta da seta</b> para mudar a direção.";
+  else b.innerHTML = "<b>2.</b> Aponte o celular para o que vai fotografar e toque em <b>Tirar foto</b>. Para corrigir a direção, arraste a ponta da seta.";
+}
+function enableShoot() { const ok = S.draft && S.draft.u != null; $("#shootBtn").disabled = !ok; $("#galleryBtn").disabled = !ok; $("#videoBtn").disabled = !ok; }
+const isVideo = p => /^video\//.test(p.type || "");
+function videoThumb(blob, max = 1280) {
+  return new Promise((res, rej) => {
+    const v = document.createElement("video"); const url = URL.createObjectURL(blob);
+    let done = false; const fin = (b, err) => { if (done) return; done = true; URL.revokeObjectURL(url); err ? rej(err) : res(b); };
+    v.muted = true; v.playsInline = true; v.preload = "auto"; v.src = url;
+    v.onloadeddata = () => { try { v.currentTime = Math.min(0.5, (v.duration || 1) / 2); } catch { fin(null, new Error("seek")); } };
+    v.onseeked = () => {
+      const s = Math.min(1, max / Math.max(v.videoWidth, v.videoHeight)); const c = document.createElement("canvas");
+      c.width = Math.max(1, Math.round(v.videoWidth * s)); c.height = Math.max(1, Math.round(v.videoHeight * s));
+      const ctx = c.getContext("2d"); ctx.drawImage(v, 0, 0, c.width, c.height);
+      // selo de "vídeo"
+      const r = Math.min(c.width, c.height) * 0.12; ctx.fillStyle = "rgba(0,0,0,.55)"; ctx.beginPath(); ctx.arc(c.width / 2, c.height / 2, r, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.moveTo(c.width / 2 - r * .35, c.height / 2 - r * .5); ctx.lineTo(c.width / 2 + r * .55, c.height / 2); ctx.lineTo(c.width / 2 - r * .35, c.height / 2 + r * .5); ctx.fill();
+      c.toBlob(b => fin(b), "image/jpeg", .82);
+    };
+    v.onerror = () => fin(null, new Error("video"));
+    setTimeout(() => fin(null, new Error("timeout")), 15000);
+  });
+}
+const mediaThumb = (p, max) => isVideo(p) ? (max <= 400 && p.thumb ? Promise.resolve(p.thumb) : videoThumb(p.blob, max)) : blobToCanvasThumb(p.blob, max, .82);
+$("#newBtn").onclick = () => {
+  closeSheet(); S.sel = null;
+  S.draft = { u: null, v: null, angle: compassLive() && S.cfg.north != null ? planAngle(C.heading) : 0, manual: false };
+  setMode("place"); setPlaceBanner(); enableShoot(); startCompass(); if (fitGps(S.cfg.gcp)) startGps();
+};
+$("#cancelPlace").onclick = () => setMode("view");
+
+function takeHeadingSnapshot() {
+  const d = S.draft; d.compass = compassLive() ? Math.round(C.heading) : null;
+  if (d.compass != null && S.cfg.north != null && !d.manual) d.angle = planAngle(d.compass);
+  if (d.compass != null && d.manual) { S.cfg.north = norm360(d.angle - d.compass); d.calibrated = true; put("pages", S.cfg); }
+}
+$("#shootBtn").onclick = () => { takeHeadingSnapshot(); $("#camInput").click(); };
+$("#galleryBtn").onclick = () => { takeHeadingSnapshot(); $("#galInput").click(); };
+$("#videoBtn").onclick = () => { takeHeadingSnapshot(); $("#vidInput").click(); };
+$("#vidInput").addEventListener("change", e => onPhotoPicked(e));
+async function onPhotoPicked(e) {
+  const f = e.target.files[0]; e.target.value = ""; if (!f || !S.draft || S.draft.u == null) return;
+  const d = S.draft;
+  const num = S.photos.reduce((m, p) => Math.max(m, p.num), 0) + 1;
+  const vid = /^video\//.test(f.type || "") || /\.(mp4|webm|mov|3gp|mkv)$/i.test(f.name || "");
+  let thumb = null; try { thumb = vid ? await videoThumb(f, 360) : await blobToCanvasThumb(f, 360); } catch {}
+  let file = f;
+  if (vid && !/^video\//.test(f.type || "")) file = new Blob([f], { type: "video/mp4" });
+  if (!vid && opt("reduce")) { try { const r = await blobToCanvasThumb(f, 2560, .85); if (r && r.size < f.size) file = r; } catch {} }
+  const rec = { id: uid(), pdfId: S.pdf.id, page: S.pageNum, num, u: d.u, v: d.v, angle: Math.round(norm360(d.angle)), angleSrc: d.manual ? "ajuste manual" : (d.compass != null ? "bússola" : "padrão"),
+    compass: d.compass, posSrc: d.posSrc || "toque", gps: d.gps || (gpsFresh() ? { ...S.gps } : null), blob: file, type: file.type || "image/jpeg", thumb, note: "", created: Date.now(), fileName: f.name };
+  await put("photos", rec);
+  S.photos.push(rec); S.pagePhotos.push(rec);
+  setMode("view"); buildPageSel(); updateListLbl();
+  S.sel = rec.id; draw(); openPhotoSheet(rec);
+  const lbl = vid ? `Vídeo ${num} salvo` : `Foto ${num} salva`; toast(d.calibrated ? `${lbl}. Bússola calibrada para esta página.` : lbl);
+  if (opt("copy")) saveFile(photoFileName(rec), rec.blob);
+}
+$("#camInput").addEventListener("change", onPhotoPicked);
+$("#galInput").addEventListener("change", onPhotoPicked);
+
+/* editar posição/direção de uma foto existente */
+function startEdit(p) {
+  closeSheet(); S.sel = p.id;
+  S.draft = { id: p.id, num: p.num, u: p.u, v: p.v, angle: p.angle, manual: true };
+  setMode("edit"); setPlaceBanner(); startCompass();
+}
+$("#cancelEdit").onclick = () => setMode("view");
+
+/* trajeto do vídeo */
+function updatePathBanner() {
+  const n = S.draft.path.length, b = $("#banner"); b.hidden = false;
+  b.innerHTML = n ? `Trajeto com <b>${n}</b> ${n === 1 ? "ponto" : "pontos"}. Continue tocando na ordem em que você andou e depois toque em <b>Salvar trajeto</b>.`
+    : "Toque na planta, em ordem, os pontos por onde você passou durante o vídeo. A linha sai do marcador.";
+  $("#undoPath").disabled = !n;
+}
+function startPath(p) {
+  closeSheet(); S.sel = p.id;
+  S.draft = { id: p.id, path: (p.path || []).map(q => ({ ...q })) };
+  setMode("path"); updatePathBanner(); draw();
+}
+$("#undoPath").onclick = () => { S.draft.path.pop(); updatePathBanner(); draw(); };
+$("#cancelPath").onclick = () => setMode("view");
+$("#savePath").onclick = async () => {
+  const p = S.photos.find(x => x.id === S.draft.id); p.path = S.draft.path;
+  await put("photos", p); setMode("view"); S.sel = p.id; draw(); openPhotoSheet(p); toast(p.path.length ? "Trajeto salvo" : "Trajeto apagado");
+};
+$("#saveEdit").onclick = async () => {
+  const p = S.photos.find(x => x.id === S.draft.id);
+  Object.assign(p, { u: S.draft.u, v: S.draft.v, angle: Math.round(norm360(S.draft.angle)), angleSrc: "ajuste manual" });
+  await put("photos", p); setMode("view"); S.sel = p.id; draw(); openPhotoSheet(p); toast("Posição atualizada");
+};
+
+/* calibração GPS */
+function updateCalBanner() {
+  if (S.mode !== "cal") return;
+  const n = S.cfg.gcp.length, b = $("#banner"); b.hidden = false;
+  const g = gpsFresh() ? `GPS ok (±${Math.round(S.gps.acc)} m)` : "aguardando sinal do GPS…";
+  b.innerHTML = `Vá até um ponto fácil de reconhecer (um canto, um pilar, um portão) e toque nele na planta. Pontos: <b>${n}</b> de no mínimo 2 · ${g}`;
+}
+function addCalPoint(u, v) {
+  if (!gpsFresh()) { toast("Ainda sem GPS. Espere o sinal e toque de novo."); return; }
+  S.cfg.gcp.push({ u, v, lat: S.gps.lat, lon: S.gps.lon, acc: S.gps.acc });
+  put("pages", S.cfg); updateCalBanner(); draw();
+  const f = fitGps(S.cfg.gcp);
+  if (f && S.cfg.gcp.length >= 2) toast(`Calibrado com ${S.cfg.gcp.length} pontos. Mais um ponto, afastado dos outros, melhora a precisão.`);
+  else toast("Ponto 1 salvo. Agora vá até outro ponto, bem afastado deste.");
+}
+$("#mCal").onclick = () => {
+  closeMenu(); closeSheet();
+  if (!navigator.geolocation) { toast("Este aparelho não oferece GPS ao navegador."); return; }
+  setMode("cal"); startGps(); updateCalBanner();
+  setTimeout(() => { if (!S.gps && S.mode === "cal") toast("O GPS não respondeu. Verifique a permissão de localização. Nesta prévia ele pode estar bloqueado.", 5000); }, 8000);
+};
+$("#clearCal").onclick = () => { S.cfg.gcp = []; put("pages", S.cfg); updateCalBanner(); draw(); };
+$("#doneCal").onclick = () => {
+  const f = fitGps(S.cfg.gcp);
+  if (f && S.cfg.north == null) { S.cfg.north = norm360(f.rot); put("pages", S.cfg); }
+  setMode("view"); updateGpsBtn();
+  if (f) toast(`GPS calibrado. Escala ≈ 1 m = ${(f.scale).toFixed(1).replace(".", ",")} px.`);
+};
+$("#mNorth").onclick = () => { closeMenu(); S.cfg.north = null; put("pages", S.cfg); toast("Calibração da bússola apagada para esta página."); };
+
+/* menu */
+function closeMenu() { $("#menu").hidden = true; }
+$("#menuBtn").onclick = e => { e.stopPropagation(); $("#menu").hidden = !$("#menu").hidden; };
+document.addEventListener("click", e => { if (!$("#menu").hidden && !e.target.closest("#menu")) closeMenu(); });
+
+/* exportar página marcada */
+$("#mExport").onclick = async () => {
+  closeMenu();
+  const c = document.createElement("canvas"); c.width = S.W; c.height = S.H;
+  const ctx = c.getContext("2d"); ctx.drawImage(plan, 0, 0);
+  const k = Math.max(1, Math.max(S.W, S.H) / 1600);
+  ctx.save(); ctx.scale(k, k);
+  for (const p of S.pagePhotos) if (p.path?.length) drawPath(ctx, [p, ...p.path].map(q => ({ x: q.u * S.W / k, y: q.v * S.H / k })), "#e2561b");
+  for (const p of S.pagePhotos) drawMarker(ctx, { x: p.u * S.W / k, y: p.v * S.H / k }, p.angle, String(p.num), { color: "#e2561b" });
+  ctx.restore();
+  const blob = await new Promise(r => c.toBlob(r, "image/png"));
+  const base = S.pdf.name.replace(/\.pdf$/i, "").replace(/[^\w\-]+/g, "_").slice(0, 60);
+  saveFile(`${base}_pag${S.pageNum}_fotos.png`, blob);
+};
+
+/* ---------- painéis de fotos ---------- */
+let sheetUrls = [];
+function closeSheet() { $("#sheet").hidden = true; sheetUrls.forEach(u => URL.revokeObjectURL(u)); sheetUrls = []; }
+function objUrl(b) { const u = URL.createObjectURL(b); sheetUrls.push(u); return u; }
+function openPhotoSheet(p) {
+  closeSheet();
+  const inner = $("#sheetInner"); const dir = rumo(p, S.cfg);
+  inner.innerHTML = `
+    <div class="sheet-head"><h2>${isVideo(p) ? "Vídeo" : "Foto"} <span class="mono">${p.num}</span> · página ${p.page}</h2>
+      <button class="iconbtn" data-a="close" aria-label="Fechar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+    ${isVideo(p) ? `<video class="photo-big" controls playsinline preload="metadata" src="${objUrl(p.blob)}"></video>` : `<img class="photo-big" alt="Foto ${p.num}" src="${objUrl(p.blob)}">`}
+    <div class="facts">
+      <div class="fact"><div class="k">Direção na planta</div><div class="v mono">${p.angle}°${dir ? ` · ${dir}` : ""}</div></div>
+      <div class="fact"><div class="k">Origem</div><div class="v">${esc(p.posSrc)} · ${esc(p.angleSrc)}</div></div>
+      <div class="fact"><div class="k">Data</div><div class="v mono">${fmtDate(p.created)}</div></div>
+    </div>
+    <label class="note" for="noteBox">Observação</label>
+    <textarea id="noteBox" placeholder="Ex.: fissura na parede da sala 3, extintor sem sinalização…"></textarea>
+    <div class="actions">
+      <button class="btn" data-a="edit">Ajustar posição e direção</button>
+      ${isVideo(p) ? `<button class="btn" data-a="path">${p.path?.length ? "Editar trajeto" : "Desenhar trajeto"}</button>` : ""}
+      <button class="btn" data-a="save">Salvar ${isVideo(p) ? "vídeo" : "foto"} no aparelho</button>
+      <button class="btn danger" data-a="del">Excluir</button>
+    </div>`;
+  const ta = inner.querySelector("textarea"); ta.value = p.note || "";
+  ta.addEventListener("change", async () => { p.note = ta.value; await put("photos", p); toast("Observação salva"); });
+  const bigImg = inner.querySelector("img.photo-big"); if (bigImg) bigImg.onclick = () => { $("#viewerImg").src = objUrl(p.blob); $("#viewer").hidden = false; };
+  inner.onclick = async e => {
+    const a = e.target.closest("[data-a]")?.dataset.a; if (!a) return;
+    if (a === "close") { S.sel = null; closeSheet(); draw(); }
+    if (a === "edit") startEdit(p);
+    if (a === "path") startPath(p);
+    if (a === "save") saveFile(photoFileName(p), p.blob);
+    if (a === "del") {
+      const row = inner.querySelector(".actions");
+      row.innerHTML = `<span class="note">Excluir ${isVideo(p) ? "o vídeo" : "a foto"} ${p.num}?</span><button class="btn danger" data-a="delyes">Excluir</button><button class="btn ghost" data-a="delno">Não</button>`;
+    }
+    if (a === "delno") openPhotoSheet(p);
+    if (a === "delyes") {
+      await del("photos", p.id);
+      S.photos = S.photos.filter(x => x.id !== p.id); S.pagePhotos = S.pagePhotos.filter(x => x.id !== p.id);
+      S.sel = null; closeSheet(); buildPageSel(); updateListLbl(); draw(); toast(`${isVideo(p) ? "Vídeo" : "Foto"} ${p.num} excluído(a)`);
+    }
+  };
+  $("#sheet").hidden = false;
+}
+$("#viewerClose").onclick = () => $("#viewer").hidden = true;
+$("#listBtn").onclick = () => {
+  closeSheet();
+  const inner = $("#sheetInner"); const list = [...S.pagePhotos].sort((a, b) => a.num - b.num);
+  inner.innerHTML = `<div class="sheet-head"><h2>Fotos da página ${S.pageNum}</h2><button class="iconbtn" data-a="close" aria-label="Fechar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+    ${list.length ? `<ul class="thumbs">${list.map(p => `<li><button data-id="${p.id}" aria-label="Foto ${p.num}"><img alt="" src="${objUrl(p.thumb || p.blob)}"><span class="n">${p.num}${isVideo(p) ? " ▶" : ""}</span></button></li>`).join("")}</ul>`
+      : `<p class="note">Nenhuma foto nesta página ainda. Toque em <b>Nova foto</b>, marque onde você está e fotografe.</p>`}`;
+  inner.onclick = e => {
+    if (e.target.closest("[data-a=close]")) { closeSheet(); return; }
+    const b = e.target.closest("[data-id]"); if (!b) return;
+    const p = S.photos.find(x => x.id === b.dataset.id);
+    const { w, h } = stageSize(); const c = toScreen(p.u, p.v);
+    S.view.x += w / 2 - c.x; S.view.y += h * 0.3 - c.y; applyView();
+    S.sel = p.id; draw(); openPhotoSheet(p);
+  };
+  $("#sheet").hidden = false;
+};
+
+/* ===================== Opções ===================== */
+function opt(k) { try { return localStorage.getItem("fnp-opt-" + k) === "1"; } catch { return false; } }
+function setOpt(k, v) { try { localStorage.setItem("fnp-opt-" + k, v ? "1" : "0"); } catch {} }
+$("#optCopy").checked = opt("copy"); $("#optReduce").checked = opt("reduce");
+$("#optCopy").onchange = e => { setOpt("copy", e.target.checked); toast(e.target.checked ? "Cada foto nova também será salva no celular" : "Cópia automática desligada"); };
+$("#optReduce").onchange = e => { setOpt("reduce", e.target.checked); toast(e.target.checked ? "Fotos novas serão reduzidas para até 2560 px" : "Fotos novas ficam no tamanho original"); };
+
+/* rumo geográfico (só quando a bússola da página está calibrada) */
+function rumo(p, cfg) {
+  if (!cfg || cfg.north == null) return "";
+  const h = norm360(p.angle - cfg.north); return `rumo ${DIRS[Math.round(h / 45) % 8]}`;
+}
+const baseName = () => S.pdf.name.replace(/\.pdf$/i, "").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^\w\-]+/g, "_").replace(/_+/g, "_").replace(/^_|_$/g, "").slice(0, 50) || "planta";
+function photoFileName(p) { const ext = ({ jpeg: "jpg", quicktime: "mov", "x-matroska": "mkv", "3gpp": "3gp" })[((p.type || "").split("/")[1] || "jpg")] || ((p.type || "").split("/")[1] || "jpg"); return `${isVideo(p) ? "Video" : "Foto"}${String(p.num).padStart(2, "0")}_pag${p.page}_${p.angle}graus.${ext}`; }
+function busy(msg) { $("#busyTxt").textContent = msg; $("#busy").hidden = false; }
+function unbusy() { $("#busy").hidden = true; }
+const scripts = {};
+function loadScript(src) {
+  return scripts[src] = scripts[src] || new Promise((res, rej) => { const s = document.createElement("script"); s.src = src; s.onload = res; s.onerror = () => { delete scripts[src]; rej(new Error("load " + src)); }; document.head.appendChild(s); });
+}
+const LIB_ZIP = "https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js";
+const LIB_PDF = "https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js";
+async function pageCfgs(pdfId) { const m = {}; (await all("pages")).forEach(c => { if (c.key.startsWith(pdfId + ":")) m[+c.key.split(":")[1]] = c; }); return m; }
+
+/* página renderizada com os marcadores, como canvas */
+async function renderMarkedPage(n, maxPx = 3200) {
+  const page = await S.doc.getPage(n); const v1 = page.getViewport({ scale: 1 });
+  const sc = Math.min(maxPx / Math.max(v1.width, v1.height), Math.sqrt(12e6 / (v1.width * v1.height)));
+  const vp = page.getViewport({ scale: sc });
+  const c = document.createElement("canvas"); c.width = Math.floor(vp.width); c.height = Math.floor(vp.height);
+  const ctx = c.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, c.width, c.height);
+  await page.render({ canvasContext: ctx, viewport: vp }).promise;
+  const k = Math.max(1, Math.max(c.width, c.height) / 1600);
+  ctx.save(); ctx.scale(k, k);
+  for (const p of S.photos.filter(x => x.page === n)) if (p.path?.length) drawPath(ctx, [p, ...p.path].map(q => ({ x: q.u * c.width / k, y: q.v * c.height / k })), "#e2561b");
+  for (const p of S.photos.filter(x => x.page === n)) drawMarker(ctx, { x: p.u * c.width / k, y: p.v * c.height / k }, p.angle, String(p.num), { color: "#e2561b" });
+  ctx.restore(); return c;
+}
+const canvasBlob = (c, type = "image/png", q) => new Promise(r => c.toBlob(r, type, q));
+
+/* ---------- Exportar tudo (.zip) ---------- */
+function csvCell(v) { v = v == null ? "" : String(v); return /[;"\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v; }
+async function exportZip() {
+  busy("Preparando o pacote…");
+  try {
+    await loadScript(LIB_ZIP);
+    const zip = new JSZip(); const cfgs = await pageCfgs(S.pdf.id);
+    const list = [...S.photos].sort((a, b) => a.num - b.num);
+    const rows = [["Foto", "Página", "X na planta (%)", "Y na planta (%)", "Direção na planta (°)", "Rumo", "Bússola (°)", "Posição por", "Direção por", "Data", "Latitude", "Longitude", "Precisão GPS (m)", "Observação", "Arquivo"]];
+    const meta = [];
+    for (const p of list) {
+      const fn = "fotos/" + photoFileName(p);
+      zip.file(fn, p.blob);
+      rows.push([p.num, p.page, (p.u * 100).toFixed(2).replace(".", ","), (p.v * 100).toFixed(2).replace(".", ","), p.angle, rumo(p, cfgs[p.page]).replace("rumo ", ""), p.compass ?? "", p.posSrc, p.angleSrc,
+        fmtDate(p.created), p.gps ? p.gps.lat.toFixed(7) : "", p.gps ? p.gps.lon.toFixed(7) : "", p.gps ? Math.round(p.gps.acc) : "", p.note || "", fn]);
+      const { blob, thumb, id, pdfId, ...rest } = p; meta.push({ ...rest, file: fn });
+    }
+    zip.file("fotos.csv", "﻿" + rows.map(r => r.map(csvCell).join(";")).join("\r\n"));
+    const pagesWith = [...new Set(list.map(p => p.page))].sort((a, b) => a - b);
+    for (const n of pagesWith) {
+      busy(`Desenhando a página ${n}…`);
+      const c = await renderMarkedPage(n);
+      zip.file(`plantas/Pagina_${String(n).padStart(2, "0")}_marcada.png`, await canvasBlob(c));
+      c.width = c.height = 0;
+    }
+    const file = await get("files", S.pdf.id);
+    zip.file("planta_original.pdf", file.data);
+    zip.file("backup.json", JSON.stringify({ app: "foto-na-planta", versao: 1, exportado: new Date().toISOString(), pdf: { name: S.pdf.name, pages: S.pdf.pages },
+      paginas: Object.values(cfgs).map(c => ({ page: +c.key.split(":")[1], north: c.north, gcp: c.gcp })), fotos: meta }, null, 1));
+    busy("Compactando…");
+    const out = await zip.generateAsync({ type: "blob", compression: "STORE" });
+    unbusy();
+    await saveFile(`${baseName()}_levantamento.zip`, out);
+  } catch (e) { console.error(e); unbusy(); toast("Não consegui gerar o pacote. Verifique a internet na primeira vez e tente de novo.", 5000); }
+}
+$("#mZip").onclick = () => { closeMenu(); if (!S.photos.length) { toast("Ainda não há fotos nesta planta."); return; } exportZip(); };
+
+/* ---------- Restaurar backup ---------- */
+$("#zipInput").addEventListener("change", async e => {
+  const f = e.target.files[0]; e.target.value = ""; if (!f) return;
+  busy("Lendo o backup…");
+  try {
+    await loadScript(LIB_ZIP);
+    const zip = await JSZip.loadAsync(f);
+    const bj = zip.file("backup.json"), pf = zip.file("planta_original.pdf");
+    if (!bj || !pf) throw new Error("sem backup.json");
+    const b = JSON.parse(await bj.async("string"));
+    busy("Importando a planta…");
+    const pdfId = await importPdf(await pf.async("blob"), b.pdf?.name || "planta.pdf");
+    for (const pg of b.paginas || []) await put("pages", { key: pdfId + ":" + pg.page, north: pg.north ?? null, gcp: pg.gcp || [] });
+    let n = 0;
+    for (const p of b.fotos || []) {
+      const zf = zip.file(p.file); if (!zf) continue;
+      busy(`Importando foto ${++n} de ${b.fotos.length}…`);
+      const blob = new Blob([await zf.async("arraybuffer")], { type: p.type || "image/jpeg" });
+      let thumb = null; try { thumb = await blobToCanvasThumb(blob, 360); } catch {}
+      const { file, ...rest } = p;
+      await put("photos", { ...rest, id: uid(), pdfId, blob, thumb });
+    }
+    unbusy(); toast(`Backup restaurado: ${n} fotos`); renderLibrary();
+  } catch (err) { console.error(err); unbusy(); toast("Este arquivo não é um backup do app (precisa ter backup.json e planta_original.pdf).", 5000); }
+});
+$('label[for="zipInput"]').addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); $("#zipInput").click(); } });
+
+/* ---------- Relatório PDF ---------- */
+const latin = s => String(s ?? "").replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/[–—]/g, "-").replace(/[^\x20-\x7E\xA0-\xFF\n]/g, "?");
+function wrapText(text, font, size, width) {
+  const out = [];
+  for (const para of latin(text).split(/\r?\n/)) {
+    let line = "";
+    for (const w of para.split(/\s+/)) {
+      const t = line ? line + " " + w : w;
+      if (font.widthOfTextAtSize(t, size) <= width) line = t;
+      else { if (line) out.push(line); line = w; while (font.widthOfTextAtSize(line, size) > width && line.length > 1) { let i = line.length - 1; while (i > 1 && font.widthOfTextAtSize(line.slice(0, i), size) > width) i--; out.push(line.slice(0, i)); line = line.slice(i); } }
+    }
+    out.push(line);
+  }
+  return out;
+}
+async function exportReport() {
+  busy("Montando o relatório…");
+  try {
+    await loadScript(LIB_PDF);
+    const { PDFDocument, StandardFonts, rgb, degrees } = PDFLib;
+    const file = await get("files", S.pdf.id); const cfgs = await pageCfgs(S.pdf.id);
+    const doc = await PDFDocument.load(await file.data.arrayBuffer(), { ignoreEncryption: true });
+    const font = await doc.embedFont(StandardFonts.Helvetica), bold = await doc.embedFont(StandardFonts.HelveticaBold);
+    const OR = rgb(0.886, 0.337, 0.106), WHITE = rgb(1, 1, 1), INK = rgb(0.09, 0.13, 0.16), MUTED = rgb(0.36, 0.42, 0.45);
+    const list = [...S.photos].sort((a, b) => a.num - b.num);
+    // 1) marcações nas pranchas originais (vetoriais)
+    doc.getPages().forEach((pg, i) => {
+      const mine = list.filter(p => p.page === i + 1); if (!mine.length) return;
+      const box = pg.getCropBox(); const rot = norm360(pg.getRotation().angle);
+      const R = Math.max(box.width, box.height) / 160, L = R * 4.2;
+      const toPdf = (u, v) => { const [ux, uy] = rot === 90 ? [v, u] : rot === 180 ? [1 - u, v] : rot === 270 ? [1 - v, 1 - u] : [u, 1 - v]; return { x: box.x + ux * box.width, y: box.y + uy * box.height }; };
+      for (const p of mine) {
+        if (!p.path?.length) continue;
+        const pts = [p, ...p.path].map(q => toPdf(q.u, q.v)), th = R * 0.28;
+        for (let j = 1; j < pts.length; j++) pg.drawLine({ start: pts[j - 1], end: pts[j], thickness: th, color: OR, dashArray: [th * 3, th * 2.2], lineCap: 1 });
+        const A = pts[pts.length - 2], B = pts[pts.length - 1], ang = Math.atan2(B.y - A.y, B.x - A.x), HL = th * 4.2;
+        const hp = [[B.x, B.y], [B.x - HL * Math.cos(ang - .45), B.y - HL * Math.sin(ang - .45)], [B.x - HL * Math.cos(ang + .45), B.y - HL * Math.sin(ang + .45)]];
+        pg.drawSvgPath(`M ${hp.map(([x, y]) => `${(x - B.x).toFixed(2)} ${(-(y - B.y)).toFixed(2)}`).join(" L ")} Z`, { x: B.x, y: B.y, color: OR, borderWidth: 0 });
+      }
+      for (const p of mine) {
+        const [ux, uy] = rot === 90 ? [p.v, p.u] : rot === 180 ? [1 - p.u, p.v] : rot === 270 ? [1 - p.v, 1 - p.u] : [p.u, 1 - p.v];
+        const X = box.x + ux * box.width, Y = box.y + uy * box.height;
+        const b = (p.angle - rot) * Math.PI / 180, dx = Math.sin(b), dy = Math.cos(b), half = 26 * Math.PI / 180;
+        // cone (drawSvgPath usa y para baixo)
+        let path = "M 0 0";
+        for (let t = -half; t <= half + 1e-6; t += half / 6) { const a = b + t; path += ` L ${(Math.sin(a) * (L + R * 1.3)).toFixed(2)} ${(-Math.cos(a) * (L + R * 1.3)).toFixed(2)}`; }
+        pg.drawSvgPath(path + " Z", { x: X, y: Y, color: OR, opacity: 0.28, borderWidth: 0 });
+        const tx = X + dx * L, ty = Y + dy * L;
+        pg.drawLine({ start: { x: X, y: Y }, end: { x: tx - dx * R * 0.6, y: ty - dy * R * 0.6 }, thickness: R * 0.28, color: OR });
+        const px = -dy, py = dx;
+        const head = [[tx + dx * R * 0.4, ty + dy * R * 0.4], [tx - dx * R * 0.7 + px * R * 0.6, ty - dy * R * 0.7 + py * R * 0.6], [tx - dx * R * 0.7 - px * R * 0.6, ty - dy * R * 0.7 - py * R * 0.6]];
+        pg.drawSvgPath(`M ${head.map(([x, y]) => `${(x - X).toFixed(2)} ${(-(y - Y)).toFixed(2)}`).join(" L ")} Z`, { x: X, y: Y, color: OR, borderWidth: 0 });
+        pg.drawCircle({ x: X, y: Y, size: R, color: OR, borderColor: WHITE, borderWidth: R * 0.18 });
+        const label = String(p.num), fs = R * (label.length > 2 ? 0.85 : 1.05), w = bold.widthOfTextAtSize(label, fs);
+        const ox = -w / 2, oy = -fs * 0.36, rr = rot * Math.PI / 180;
+        pg.drawText(label, { x: X + ox * Math.cos(rr) - oy * Math.sin(rr), y: Y + ox * Math.sin(rr) + oy * Math.cos(rr), size: fs, font: bold, color: WHITE, rotate: degrees(rot) });
+      }
+    });
+    // 2) páginas de fotos, A4 retrato, 2 por página
+    const PW = 595.28, PH = 841.89, M = 40, CW = PW - 2 * M, SLOT = (PH - 2 * M - 30) / 2;
+    const title = latin(S.pdf.name.replace(/\.pdf$/i, ""));
+    let page = null, slot = 0, pnum = 0;
+    const newPage = () => {
+      page = doc.addPage([PW, PH]); slot = 0; pnum++;
+      page.drawText(latin("Registro fotográfico"), { x: M, y: PH - M + 6, size: 11, font: bold, color: INK });
+      const t2 = `${title} · ${list.length} fotos`; const t2s = latin(t2).slice(0, 90);
+      page.drawText(t2s, { x: PW - M - font.widthOfTextAtSize(t2s, 9), y: PH - M + 7, size: 9, font, color: MUTED });
+      page.drawLine({ start: { x: M, y: PH - M }, end: { x: PW - M, y: PH - M }, thickness: .6, color: MUTED });
+      page.drawText(`${pnum}`, { x: PW - M - font.widthOfTextAtSize(`${pnum}`, 9), y: M - 18, size: 9, font, color: MUTED });
+    };
+    for (const p of list) {
+      busy(`Adicionando foto ${p.num}…`);
+      if (!page || slot === 2) newPage();
+      const top = PH - M - 14 - slot * SLOT;
+      let img = null;
+      try { const jb = await mediaThumb(p, 1600); img = await doc.embedJpg(await jb.arrayBuffer()); } catch (e) { console.warn(e); }
+      const capH = 74, boxH = SLOT - capH - 10;
+      if (img) {
+        const s = Math.min(CW / img.width, boxH / img.height), w = img.width * s, h = img.height * s;
+        page.drawImage(img, { x: M + (CW - w) / 2, y: top - h, width: w, height: h });
+        var capTop = top - h - 16;
+      } else { page.drawText("(foto indisponível)", { x: M, y: top - 20, size: 10, font, color: MUTED }); var capTop = top - 40; }
+      const r = rumo(p, cfgs[p.page]);
+      page.drawCircle({ x: M + 9, y: capTop + 3.5, size: 9, color: OR });
+      const ns = String(p.num); page.drawText(ns, { x: M + 9 - bold.widthOfTextAtSize(ns, 9) / 2, y: capTop + 0.5, size: 9, font: bold, color: WHITE });
+      page.drawText(latin(`${isVideo(p) ? "Vídeo" : "Foto"} ${p.num}  ·  Página ${p.page} da planta  ·  Direção ${p.angle}°${r ? " (" + r + ")" : ""}`), { x: M + 24, y: capTop, size: 11, font: bold, color: INK });
+      const info = `${isVideo(p) ? `Vídeo: arquivo ${photoFileName(p)} no pacote .zip  ·  ` : ""}${fmtDate(p.created)}${p.gps ? `  ·  GPS ${p.gps.lat.toFixed(6)}, ${p.gps.lon.toFixed(6)} (±${Math.round(p.gps.acc)} m)` : ""}`;
+      page.drawText(latin(info), { x: M + 24, y: capTop - 14, size: 9, font, color: MUTED });
+      if (p.note) wrapText(p.note, font, 10, CW - 24).slice(0, 4).forEach((ln, i) => page.drawText(ln, { x: M + 24, y: capTop - 30 - i * 12, size: 10, font, color: INK }));
+      slot++;
+    }
+    busy("Salvando o PDF…");
+    const bytes = await doc.save();
+    unbusy();
+    await saveFile(`${baseName()}_relatorio_fotos.pdf`, new Blob([bytes], { type: "application/pdf" }));
+  } catch (e) { console.error(e); unbusy(); toast("Não consegui gerar o relatório. Verifique a internet na primeira vez e tente de novo.", 5000); }
+}
+$("#mReport").onclick = () => { closeMenu(); if (!S.photos.length) { toast("Ainda não há fotos nesta planta."); return; } exportReport(); };
+
+/* ===================== Início ===================== */
+(async function init() {
+  if (!window.pdfjsLib) { $("#pdfList").innerHTML = `<li class="empty">Não consegui carregar o leitor de PDF. Verifique a conexão e recarregue a página.</li>`; return; }
+  try { await idb(); } catch (e) { $("#pdfList").innerHTML = `<li class="empty">Este navegador não permite guardar dados aqui (modo anônimo?). As plantas e fotos não ficarão salvas.</li>`; }
+  await renderLibrary();
+  await seedSample(); await renderLibrary();
+  try {
+    const est = await navigator.storage?.estimate?.();
+    if (est?.usage != null) $("#storageNote").textContent = `Espaço usado neste aparelho: ${fmtSize(est.usage)}${est.quota ? ` de ${fmtSize(est.quota)} disponíveis` : ""}.`;
+  } catch {}
+  if ("serviceWorker" in navigator && location.protocol === "https:" && !window.claude) { navigator.serviceWorker.register("sw.js").catch(() => {}); }
+})();
+</script>
+
+</html>
