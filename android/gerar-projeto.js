@@ -13,6 +13,7 @@ const path = require('path');
   m.fallbackType = 'customtabs';
   m.enableSiteSettingsShortcut = true;
   m.orientation = 'any';
+  m.minSdkVersion = 24;
   const out = path.resolve(process.argv[2] || 'twa');
   await new TwaGenerator().createTwaProject(out, m, new ConsoleLog('twa'));
   console.log('Projeto gerado em', out);
