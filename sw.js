@@ -1,4 +1,4 @@
-const CACHE = "foto-na-planta-v5";
+const CACHE = "foto-na-planta-v6";
 const ASSETS = ["./", "index.html", "pdf.worker.min.js", "manifest.webmanifest", "icon.svg", "icon-192.png", "icon-512.png",
   "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js",
   "https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js",

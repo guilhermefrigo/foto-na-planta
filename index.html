@@ -213,6 +213,7 @@ textarea{width:100%;min-height:64px;border-radius:10px;border:1px solid var(--li
   <div class="sep"></div>
   <button id="mExport"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>Salvar esta página marcada (PNG)</button>
   <button id="mReport"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M6 3h9l4 4v14H6z"/><path d="M9 12h7M9 16h7M9 8h3"/></svg>Relatório PDF (plantas + fotos)</button>
+  <button id="mShare"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M8.2 11l7.6-3.8M8.2 13l7.6 3.8"/></svg>Exportar planta calibrada (sem fotos)</button>
   <button id="mZip"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M4 7l2-3h12l2 3v13H4z"/><path d="M4 7h16M12 4v10"/></svg>Exportar tudo (.zip)</button>
   <div class="sep"></div>
   <label class="toggle"><input type="checkbox" id="optCopy"> Salvar cópia de cada foto no celular</label>
@@ -1209,12 +1210,12 @@ const canvasBlob = (c, type = "image/png", q) => new Promise(r => c.toBlob(r, ty
 
 /* ---------- Exportar tudo (.zip) ---------- */
 function csvCell(v) { v = v == null ? "" : String(v); return /[;"\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v; }
-async function exportZip() {
+async function exportZip(withPhotos = true) {
   busy("Preparando o pacote…");
   try {
     await loadScript(LIB_ZIP);
     const zip = new JSZip(); const cfgs = await pageCfgs(S.pdf.id);
-    const list = [...S.photos].sort((a, b) => a.num - b.num);
+    const list = withPhotos ? [...S.photos].sort((a, b) => a.num - b.num) : [];
     const rows = [["Foto", "Página", "X na planta (%)", "Y na planta (%)", "Direção na planta (°)", "Rumo", "Bússola (°)", "Posição por", "Direção por", "Data", "Latitude", "Longitude", "Precisão GPS (m)", "Observação", "Arquivo"]];
     const meta = [];
     for (const p of list) {
@@ -1224,7 +1225,7 @@ async function exportZip() {
         fmtDate(p.created), p.gps ? p.gps.lat.toFixed(7) : "", p.gps ? p.gps.lon.toFixed(7) : "", p.gps ? Math.round(p.gps.acc) : "", p.note || "", fn]);
       const { blob, thumb, id, pdfId, ...rest } = p; meta.push({ ...rest, file: fn });
     }
-    zip.file("fotos.csv", "﻿" + rows.map(r => r.map(csvCell).join(";")).join("\r\n"));
+    if (withPhotos) zip.file("fotos.csv", "﻿" + rows.map(r => r.map(csvCell).join(";")).join("\r\n"));
     const pagesWith = [...new Set(list.map(p => p.page))].sort((a, b) => a - b);
     for (const n of pagesWith) {
       busy(`Desenhando a página ${n}…`);
@@ -1235,13 +1236,15 @@ async function exportZip() {
     const file = await get("files", S.pdf.id);
     zip.file("planta_original.pdf", file.data);
     zip.file("backup.json", JSON.stringify({ app: "foto-na-planta", versao: 1, exportado: new Date().toISOString(), pdf: { name: S.pdf.name, pages: S.pdf.pages },
-      paginas: Object.values(cfgs).map(c => ({ page: +c.key.split(":")[1], north: c.north, gcp: c.gcp })), fotos: meta }, null, 1));
+      paginas: Object.values(cfgs).map(c => { const { key, ...rest } = c; return { page: +key.split(":")[1], ...rest }; }), fotos: meta }, null, 1));
+    if (!withPhotos) zip.file("LEIA-ME.txt", "Planta calibrada do app Foto na Planta.\r\nNo app: Biblioteca > Restaurar backup (.zip) e escolha este arquivo.\r\nA escala, o norte e os pontos de GPS de cada página já vêm prontos.\r\n");
     busy("Compactando…");
     const out = await zip.generateAsync({ type: "blob", compression: "STORE" });
     unbusy();
-    await saveFile(`${baseName()}_levantamento.zip`, out);
+    await saveFile(`${baseName()}_${withPhotos ? "levantamento" : "planta_calibrada"}.zip`, out);
   } catch (e) { console.error(e); unbusy(); toast("Não consegui gerar o pacote. Verifique a internet na primeira vez e tente de novo.", 5000); }
 }
+$("#mShare").onclick = () => { closeMenu(); exportZip(false); };
 $("#mZip").onclick = () => { closeMenu(); if (!S.photos.length) { toast("Ainda não há fotos nesta planta."); return; } exportZip(); };
 
 /* ---------- Restaurar backup ---------- */
@@ -1256,7 +1259,7 @@ $("#zipInput").addEventListener("change", async e => {
     const b = JSON.parse(await bj.async("string"));
     busy("Importando a planta…");
     const pdfId = await importPdf(await pf.async("blob"), b.pdf?.name || "planta.pdf");
-    for (const pg of b.paginas || []) await put("pages", { key: pdfId + ":" + pg.page, north: pg.north ?? null, gcp: pg.gcp || [] });
+    for (const pg of b.paginas || []) { const { page, ...rest } = pg; await put("pages", { north: null, gcp: [], ...rest, key: pdfId + ":" + page }); }
     let n = 0;
     for (const p of b.fotos || []) {
       const zf = zip.file(p.file); if (!zf) continue;
@@ -1266,7 +1269,7 @@ $("#zipInput").addEventListener("change", async e => {
       const { file, ...rest } = p;
       await put("photos", { ...rest, id: uid(), pdfId, blob, thumb });
     }
-    unbusy(); toast(`Backup restaurado: ${n} fotos`); renderLibrary();
+    unbusy(); toast(n ? `Backup restaurado: ${n} fotos` : "Planta calibrada importada: escala, norte e GPS já estão prontos"); renderLibrary();
   } catch (err) { console.error(err); unbusy(); toast("Este arquivo não é um backup do app (precisa ter backup.json e planta_original.pdf).", 5000); }
 });
 $('label[for="zipInput"]').addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); $("#zipInput").click(); } });
