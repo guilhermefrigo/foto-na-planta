@@ -31,6 +31,8 @@ button:focus-visible,label:focus-visible,select:focus-visible,textarea:focus-vis
 .btn.shoot{background:var(--mark);border-color:var(--mark);color:#fff;font-weight:700}
 .btn.danger{color:var(--danger)}
 .btn.ghost{border-color:transparent;background:transparent}
+#locBtn[aria-pressed="true"]{background:#1a73e8;border-color:#1a73e8;color:#fff}
+@media (max-width:420px){.loc-lbl{display:none}}
 .btn:disabled{opacity:.45;cursor:default}
 .btn svg{width:20px;height:20px;flex:none}
 .mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
@@ -170,6 +172,7 @@ textarea{width:100%;min-height:64px;border-radius:10px;border:1px solid var(--li
   </div>
   <div class="bottombar" id="barView">
     <button class="btn" id="listBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg><span id="listLbl">Fotos</span></button>
+    <button class="btn" id="locBtn" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3.5" fill="currentColor"/><circle cx="12" cy="12" r="8"/><path d="M12 1v3M12 20v3M1 12h3M20 12h3"/></svg><span class="loc-lbl">Minha posição</span></button>
     <button class="btn shoot grow" id="newBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>Nova foto</button>
     <button class="btn" id="fitBtn" aria-label="Enquadrar planta"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
   </div>
@@ -374,7 +377,7 @@ async function seedSample() {
 /* ===================== Visualizador ===================== */
 const plan = $("#plan"), overlay = $("#overlay"), stage = $("#stage");
 const S = {
-  pdf: null, doc: null, pageNum: 1, W: 1, H: 1, view: { s: 1, x: 0, y: 0 },
+  live: false, liveCentered: false, pdf: null, doc: null, pageNum: 1, W: 1, H: 1, view: { s: 1, x: 0, y: 0 },
   photos: [], pagePhotos: [], cfg: null, mode: "view", draft: null, sel: null, renderTask: null, gps: null
 };
 const pageKey = () => S.pdf.id + ":" + S.pageNum;
@@ -410,6 +413,7 @@ async function showPage(n) {
   S.pagePhotos = S.photos.filter(p => p.page === n);
   S.cfg = (await get("pages", pageKey())) || { key: pageKey(), north: null, gcp: [] };
   buildPageSel(); updateListLbl(); updateGpsBtn();
+  if (S.live) { S.liveCentered = false; if (!fitGps(S.cfg.gcp)) { toast("Esta página ainda não tem GPS calibrado."); } }
   $("#loading").hidden = false;
   if (S.renderTask) { try { S.renderTask.cancel(); } catch {} }
   const page = await S.doc.getPage(n);
@@ -432,7 +436,7 @@ function updateListLbl() { $("#listLbl").textContent = `Fotos (${S.pagePhotos.le
 $("#pageSel").onchange = e => showPage(+e.target.value);
 $("#prevPage").onclick = () => S.pageNum > 1 && showPage(S.pageNum - 1);
 $("#nextPage").onclick = () => S.pageNum < S.doc.numPages && showPage(S.pageNum + 1);
-$("#backBtn").onclick = () => { setMode("view"); closeSheet(); $("#docView").hidden = true; $("#libView").hidden = false; renderLibrary(); };
+$("#backBtn").onclick = () => { stopLive(); setMode("view"); closeSheet(); $("#docView").hidden = true; $("#libView").hidden = false; renderLibrary(); };
 
 /* ---------- câmera da planta: pan / zoom ---------- */
 function stageSize() { const r = stage.getBoundingClientRect(); return { w: r.width, h: r.height, r }; }
@@ -590,6 +594,7 @@ function draw() {
       ctx.beginPath(); ctx.arc(c.x, c.y, 10, 0, Math.PI * 2); ctx.moveTo(c.x - 16, c.y); ctx.lineTo(c.x + 16, c.y); ctx.moveTo(c.x, c.y - 16); ctx.lineTo(c.x, c.y + 16); ctx.stroke();
     }
   }
+  drawLive(ctx);
   if (S.draft && S.draft.u != null) drawMarker(ctx, toScreen(S.draft.u, S.draft.v), S.draft.angle, S.draft.num != null ? String(S.draft.num) : "+", { active: true, handle: true, color: css("--accent") });
 }
 
@@ -614,6 +619,7 @@ function onOrient(e) {
   C.heading = C.heading == null ? h : norm360(C.heading + ((((h - C.heading) % 360) + 540) % 360 - 180) * 0.35);
   C.t = Date.now();
   if (S.draft && !S.draft.manual && (S.mode === "place") && S.cfg?.north != null) { S.draft.angle = planAngle(C.heading); draw(); }
+  else if (S.live && S.cfg?.north != null && Date.now() - (S.lastLiveDraw || 0) > 100) { S.lastLiveDraw = Date.now(); draw(); }
   updateCompassChip();
 }
 async function startCompass() {
@@ -630,6 +636,11 @@ const compassLive = () => C.heading != null && Date.now() - C.t < 3000;
 const planAngle = h => norm360(h + (S.cfg?.north || 0));
 function updateCompassChip() {
   const chip = $("#compassChip");
+  if (S.mode === "view" && S.live) {
+    chip.hidden = false; const L = liveFix(); chip.classList.toggle("live", !!L);
+    $("#compassTxt").textContent = L ? `Ao vivo · GPS ±${Math.round(L.acc)} m${compassLive() ? ` · ${Math.round(C.heading)}°` : ""}` : "Ao vivo · aguardando GPS…";
+    return;
+  }
   if (S.mode !== "place" && S.mode !== "edit") { chip.hidden = true; return; }
   chip.hidden = false; chip.classList.toggle("live", compassLive());
   let t;
@@ -638,18 +649,18 @@ function updateCompassChip() {
   else t = `Bússola ${Math.round(C.heading)}° ${DIRS[Math.round(C.heading / 45) % 8]}${S.draft?.manual ? " · seta ajustada à mão" : " · seta seguindo"}`;
   $("#compassTxt").textContent = t;
 }
-setInterval(() => { if (S.mode === "place" || S.mode === "edit") updateCompassChip(); }, 1500);
+setInterval(() => { if (S.mode === "place" || S.mode === "edit" || S.live) updateCompassChip(); }, 1500);
 
 /* ---------- GPS ---------- */
 let gpsWatch = null;
 function startGps() {
   if (gpsWatch != null || !navigator.geolocation) return;
   try {
-    gpsWatch = navigator.geolocation.watchPosition(p => { S.gps = { lat: p.coords.latitude, lon: p.coords.longitude, acc: p.coords.accuracy, t: Date.now() }; updateCalBanner(); },
+    gpsWatch = navigator.geolocation.watchPosition(p => { S.gps = { lat: p.coords.latitude, lon: p.coords.longitude, acc: p.coords.accuracy, t: Date.now() }; updateCalBanner(); onLiveFix(); },
       () => { S.gps = null; updateCalBanner(); }, { enableHighAccuracy: true, maximumAge: 2000, timeout: 20000 });
   } catch { gpsWatch = null; }
 }
-function stopGps() { if (gpsWatch != null) { navigator.geolocation.clearWatch(gpsWatch); gpsWatch = null; } }
+function stopGps(force) { if (S.live && !force) return; if (gpsWatch != null) { navigator.geolocation.clearWatch(gpsWatch); gpsWatch = null; } }
 const gpsFresh = () => S.gps && Date.now() - S.gps.t < 15000;
 function toMeters(lat, lon, o) { return { x: (lon - o.lon) * Math.cos(o.lat * Math.PI / 180) * 111320, y: -(lat - o.lat) * 110540 }; }
 function fitGps(gcp) {
@@ -668,6 +679,48 @@ function fitGps(gcp) {
   const map = (lat, lon) => { const e = toMeters(lat, lon, o); const ex = e.x - me.x, ey = e.y - me.y; return { u: (mp.x + ar * ex - ai * ey) / S.W, v: (mp.y + ai * ex + ar * ey) / S.H }; };
   return { map, rot: Math.atan2(ai, ar) * 180 / Math.PI, scale: Math.hypot(ar, ai) };
 }
+/* ---------- posição ao vivo ---------- */
+function liveFix() {
+  if (!S.live || !gpsFresh()) return null;
+  const f = fitGps(S.cfg?.gcp); if (!f) return null;
+  return { ...f.map(S.gps.lat, S.gps.lon), rPx: S.gps.acc * f.scale, acc: S.gps.acc };
+}
+function drawLive(ctx) {
+  const L = liveFix(); if (!L) return;
+  const c = toScreen(L.u, L.v), r = Math.max(10, L.rPx * S.view.s);
+  ctx.save();
+  ctx.beginPath(); ctx.arc(c.x, c.y, r, 0, Math.PI * 2); ctx.fillStyle = "rgba(26,115,232,.14)"; ctx.fill();
+  ctx.lineWidth = 1.5; ctx.strokeStyle = "rgba(26,115,232,.5)"; ctx.stroke();
+  if (compassLive() && S.cfg?.north != null) {
+    const a = planAngle(C.heading) * Math.PI / 180, half = 30 * Math.PI / 180;
+    const g = ctx.createRadialGradient(c.x, c.y, 4, c.x, c.y, 60); g.addColorStop(0, "rgba(26,115,232,.55)"); g.addColorStop(1, "rgba(26,115,232,0)");
+    ctx.beginPath(); ctx.moveTo(c.x, c.y); ctx.arc(c.x, c.y, 60, a - Math.PI / 2 - half, a - Math.PI / 2 + half); ctx.closePath(); ctx.fillStyle = g; ctx.fill();
+  }
+  ctx.beginPath(); ctx.arc(c.x, c.y, 9, 0, Math.PI * 2); ctx.fillStyle = "#1a73e8"; ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = "#fff"; ctx.stroke();
+  ctx.restore();
+}
+function setLiveBtn() { $("#locBtn").setAttribute("aria-pressed", S.live ? "true" : "false"); updateCompassChip(); }
+function onLiveFix() {
+  if (!S.live) return;
+  const L = liveFix();
+  if (L && !S.liveCentered) {
+    S.liveCentered = true; const { w, h } = stageSize(); const c = toScreen(L.u, L.v);
+    if (c.x < 40 || c.y < 40 || c.x > w - 40 || c.y > h - 40) { S.view.x += w / 2 - c.x; S.view.y += h / 2 - c.y; applyView(); }
+    if (L.u < -0.05 || L.u > 1.05 || L.v < -0.05 || L.v > 1.05) toast("Pelo GPS você está fora desta planta.");
+  }
+  updateCompassChip(); draw();
+}
+function stopLive() { S.live = false; stopGps(true); setLiveBtn(); draw(); }
+$("#locBtn").onclick = () => {
+  if (S.live) { stopLive(); return; }
+  if (!navigator.geolocation) { toast("Este aparelho não oferece GPS ao navegador."); return; }
+  if (!fitGps(S.cfg?.gcp)) {
+    toast("Antes, calibre o GPS desta página: toque em 2 pontos conhecidos da planta enquanto estiver neles.", 6000);
+    $("#mCal").click(); return;
+  }
+  S.live = true; S.liveCentered = false; setLiveBtn(); startGps(); startCompass();
+  setTimeout(() => { if (S.live && !gpsFresh()) toast("Aguardando o sinal do GPS… perto de janelas ou ao ar livre ele chega mais rápido.", 5000); }, 6000);
+};
 function updateGpsBtn() { const f = fitGps(S.cfg?.gcp); $("#gpsBtn").hidden = !f; }
 $("#gpsBtn").onclick = () => {
   const f = fitGps(S.cfg.gcp); if (!f) return;
@@ -716,6 +769,7 @@ const mediaThumb = (p, max) => isVideo(p) ? (max <= 400 && p.thumb ? Promise.res
 $("#newBtn").onclick = () => {
   closeSheet(); S.sel = null;
   S.draft = { u: null, v: null, angle: compassLive() && S.cfg.north != null ? planAngle(C.heading) : 0, manual: false };
+  const L = liveFix(); if (L && L.u >= 0 && L.u <= 1 && L.v >= 0 && L.v <= 1) { S.draft.u = L.u; S.draft.v = L.v; S.draft.posSrc = "GPS"; S.draft.gps = { ...S.gps }; }
   setMode("place"); setPlaceBanner(); enableShoot(); startCompass(); if (fitGps(S.cfg.gcp)) startGps();
 };
 $("#cancelPlace").onclick = () => setMode("view");
@@ -808,6 +862,7 @@ $("#doneCal").onclick = () => {
   const f = fitGps(S.cfg.gcp);
   if (f && S.cfg.north == null) { S.cfg.north = norm360(f.rot); put("pages", S.cfg); }
   setMode("view"); updateGpsBtn();
+  if (f && !S.live) { S.live = true; S.liveCentered = false; setLiveBtn(); startGps(); startCompass(); }
   if (f) toast(`GPS calibrado. Escala ≈ 1 m = ${(f.scale).toFixed(1).replace(".", ",")} px.`);
 };
 $("#mNorth").onclick = () => { closeMenu(); S.cfg.north = null; put("pages", S.cfg); toast("Calibração da bússola apagada para esta página."); };
