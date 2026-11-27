@@ -492,7 +492,7 @@ stage.addEventListener("pointermove", e => {
     S.draft.angle = norm360(Math.atan2(p.x - c.x, -(p.y - c.y)) * 180 / Math.PI);
     S.draft.manual = true; draw(); updateCompassChip();
   } else if (gesture.type === "move") {
-    const q = toPage(p.x, p.y); S.draft.u = clamp01(q.u); S.draft.v = clamp01(q.v); draw();
+    const q = toPage(p.x, p.y); S.draft.u = clamp01(q.u); S.draft.v = clamp01(q.v); S.draft.posSrc = "toque"; draw();
   }
   gesture.last = p;
 });
@@ -588,7 +588,7 @@ function draw() {
     drawMarker(ctx, c, p.angle, String(p.num), { active: p.id === S.sel });
   }
   ctx.globalAlpha = 1;
-  if (S.mode === "cal" || (S.cfg?.gcp?.length && S.mode !== "view")) {
+  if (S.mode === "cal") {
     for (const g of S.cfg.gcp) {
       const c = toScreen(g.u, g.v); ctx.strokeStyle = css("--accent"); ctx.lineWidth = 2.5;
       ctx.beginPath(); ctx.arc(c.x, c.y, 10, 0, Math.PI * 2); ctx.moveTo(c.x - 16, c.y); ctx.lineTo(c.x + 16, c.y); ctx.moveTo(c.x, c.y - 16); ctx.lineTo(c.x, c.y + 16); ctx.stroke();
@@ -663,21 +663,67 @@ function startGps() {
 function stopGps(force) { if (S.live && !force) return; if (gpsWatch != null) { navigator.geolocation.clearWatch(gpsWatch); gpsWatch = null; } }
 const gpsFresh = () => S.gps && Date.now() - S.gps.t < 15000;
 function toMeters(lat, lon, o) { return { x: (lon - o.lon) * Math.cos(o.lat * Math.PI / 180) * 111320, y: -(lat - o.lat) * 110540 }; }
-function fitGps(gcp) {
-  // similaridade (escala + rotação + translação) de metros locais para pixels da página
-  if (!gcp || gcp.length < 2) return null;
+function fitOnce(gcp) {
   const o = gcp[0]; const E = gcp.map(g => toMeters(g.lat, g.lon, o)); const P = gcp.map(g => ({ x: g.u * S.W, y: g.v * S.H }));
-  const n = gcp.length; const me = { x: 0, y: 0 }, mp = { x: 0, y: 0 };
-  E.forEach(e => { me.x += e.x / n; me.y += e.y / n; }); P.forEach(p => { mp.x += p.x / n; mp.y += p.y / n; });
-  let ar = 0, ai = 0, den = 0;
-  for (let i = 0; i < n; i++) {
+  const W = gcp.map(g => 1 / Math.pow(Math.max(g.acc || 5, 3), 2)); const sw = W.reduce((a, b) => a + b, 0);
+  const me = { x: 0, y: 0 }, mp = { x: 0, y: 0 };
+  gcp.forEach((g, i) => { me.x += W[i] * E[i].x / sw; me.y += W[i] * E[i].y / sw; mp.x += W[i] * P[i].x / sw; mp.y += W[i] * P[i].y / sw; });
+  let ar = 0, ai = 0, den = 0, spread = 0;
+  for (let i = 0; i < gcp.length; i++) {
     const ex = E[i].x - me.x, ey = E[i].y - me.y, px = P[i].x - mp.x, py = P[i].y - mp.y;
-    ar += ex * px + ey * py; ai += ex * py - ey * px; den += ex * ex + ey * ey;
+    ar += W[i] * (ex * px + ey * py); ai += W[i] * (ex * py - ey * px); den += W[i] * (ex * ex + ey * ey); spread = Math.max(spread, Math.hypot(ex, ey));
   }
-  if (den < 4) return null; // pontos muito próximos (< 2 m)
+  if (spread < 3 || den <= 0) return null; // pontos muito próximos
   ar /= den; ai /= den;
-  const map = (lat, lon) => { const e = toMeters(lat, lon, o); const ex = e.x - me.x, ey = e.y - me.y; return { u: (mp.x + ar * ex - ai * ey) / S.W, v: (mp.y + ai * ex + ar * ey) / S.H }; };
-  return { map, rot: Math.atan2(ai, ar) * 180 / Math.PI, scale: Math.hypot(ar, ai) };
+  const scale = Math.hypot(ar, ai);
+  const toPx = e => { const ex = e.x - me.x, ey = e.y - me.y; return { x: mp.x + ar * ex - ai * ey, y: mp.y + ai * ex + ar * ey }; };
+  const res = gcp.map((g, i) => { const q = toPx(E[i]); return Math.hypot(q.x - P[i].x, q.y - P[i].y) / scale; }); // erro em metros
+  const map = (lat, lon) => { const q = toPx(toMeters(lat, lon, o)); return { u: q.x / S.W, v: q.y / S.H }; };
+  return { map, rot: Math.atan2(ai, ar) * 180 / Math.PI, scale, res, rms: Math.sqrt(res.reduce((a, r) => a + r * r, 0) / res.length) };
+}
+function fitGps(gcp) {
+  // similaridade (escala + rotação + translação) de metros locais para pixels da página, ponderada pela precisão do GPS
+  if (!gcp || gcp.length < 2) return null;
+  let f = fitOnce(gcp); if (!f) return null;
+  if (gcp.length >= 4) { // descarta pontos muito fora (GPS que "pulou")
+    const med = [...f.res].sort((a, b) => a - b)[Math.floor(f.res.length / 2)];
+    const keep = gcp.filter((g, i) => f.res[i] <= Math.max(3 * med, 12));
+    if (keep.length >= 2 && keep.length < gcp.length) { const f2 = fitOnce(keep); if (f2) { f = f2; f.dropped = gcp.length - keep.length; } }
+  }
+  f.n = gcp.length - (f.dropped || 0); return f;
+}
+/* aprendizado contínuo: cada foto corrigida vira ponto de calibração */
+function upsertGcp(pt) {
+  S.cfg.gcp = (S.cfg.gcp || []).filter(g => !pt.photoId || g.photoId !== pt.photoId);
+  S.cfg.gcp.push(pt);
+  const autos = S.cfg.gcp.filter(g => g.photoId);
+  if (autos.length > 50) { const drop = autos[0]; S.cfg.gcp = S.cfg.gcp.filter(g => g !== drop); }
+}
+function circMean(vals) { let x = 0, y = 0; vals.forEach(v => { x += Math.cos(v * Math.PI / 180); y += Math.sin(v * Math.PI / 180); }); return norm360(Math.atan2(y, x) * 180 / Math.PI); }
+function addNorthSample(off, photoId) {
+  S.cfg.northSamples = (S.cfg.northSamples || []).filter(n => !photoId || n.photoId !== photoId);
+  S.cfg.northSamples.push({ v: norm360(off), photoId: photoId || null });
+  if (S.cfg.northSamples.length > 30) S.cfg.northSamples.shift();
+  S.cfg.north = circMean(S.cfg.northSamples.map(n => n.v));
+}
+function learnFrom(p) {
+  // devolve um texto curto do que foi aprendido
+  const msgs = [];
+  if (p.gps && p.gps.acc <= 20 && p.posSrc !== "GPS") {
+    upsertGcp({ u: p.u, v: p.v, lat: p.gps.lat, lon: p.gps.lon, acc: p.gps.acc, photoId: p.id });
+    const f = fitGps(S.cfg.gcp); if (f && !(S.cfg.northSamples || []).length) S.cfg.north = norm360(f.rot);
+    msgs.push(f ? `GPS calibrado com ${f.n} pontos (±${Math.max(1, Math.round(f.rms))} m)` : "1º ponto de GPS aprendido");
+  }
+  if (p.compass != null && p.angleSrc === "ajuste manual") { addNorthSample(p.angle - p.compass, p.id); msgs.push(`bússola ajustada (${S.cfg.northSamples.length} ${S.cfg.northSamples.length === 1 ? "amostra" : "amostras"})`); }
+  if (msgs.length) { put("pages", S.cfg); updateGpsBtn(); }
+  return msgs.join(" · ");
+}
+function forgetPhoto(id) {
+  const g0 = (S.cfg.gcp || []).length, n0 = (S.cfg.northSamples || []).length;
+  S.cfg.gcp = (S.cfg.gcp || []).filter(g => g.photoId !== id);
+  S.cfg.northSamples = (S.cfg.northSamples || []).filter(n => n.photoId !== id);
+  if (S.cfg.northSamples.length !== n0) S.cfg.north = S.cfg.northSamples.length ? circMean(S.cfg.northSamples.map(n => n.v)) : S.cfg.north;
+  if (S.cfg.gcp.length !== g0 || S.cfg.northSamples.length !== n0) { put("pages", S.cfg); updateGpsBtn(); }
 }
 /* ---------- posição ao vivo ---------- */
 function liveFix() {
@@ -770,14 +816,14 @@ $("#newBtn").onclick = () => {
   closeSheet(); S.sel = null;
   S.draft = { u: null, v: null, angle: compassLive() && S.cfg.north != null ? planAngle(C.heading) : 0, manual: false };
   const L = liveFix(); if (L && L.u >= 0 && L.u <= 1 && L.v >= 0 && L.v <= 1) { S.draft.u = L.u; S.draft.v = L.v; S.draft.posSrc = "GPS"; S.draft.gps = { ...S.gps }; }
-  setMode("place"); setPlaceBanner(); enableShoot(); startCompass(); if (fitGps(S.cfg.gcp)) startGps();
+  setMode("place"); setPlaceBanner(); enableShoot(); startCompass(); startGps();
 };
 $("#cancelPlace").onclick = () => setMode("view");
 
 function takeHeadingSnapshot() {
   const d = S.draft; d.compass = compassLive() ? Math.round(C.heading) : null;
   if (d.compass != null && S.cfg.north != null && !d.manual) d.angle = planAngle(d.compass);
-  if (d.compass != null && d.manual) { S.cfg.north = norm360(d.angle - d.compass); d.calibrated = true; put("pages", S.cfg); }
+  d.gpsAtShot = gpsFresh() ? { ...S.gps } : null;
 }
 $("#shootBtn").onclick = () => { takeHeadingSnapshot(); $("#camInput").click(); };
 $("#galleryBtn").onclick = () => { takeHeadingSnapshot(); $("#galInput").click(); };
@@ -793,12 +839,12 @@ async function onPhotoPicked(e) {
   if (vid && !/^video\//.test(f.type || "")) file = new Blob([f], { type: "video/mp4" });
   if (!vid && opt("reduce")) { try { const r = await blobToCanvasThumb(f, 2560, .85); if (r && r.size < f.size) file = r; } catch {} }
   const rec = { id: uid(), pdfId: S.pdf.id, page: S.pageNum, num, u: d.u, v: d.v, angle: Math.round(norm360(d.angle)), angleSrc: d.manual ? "ajuste manual" : (d.compass != null ? "bússola" : "padrão"),
-    compass: d.compass, posSrc: d.posSrc || "toque", gps: d.gps || (gpsFresh() ? { ...S.gps } : null), blob: file, type: file.type || "image/jpeg", thumb, note: "", created: Date.now(), fileName: f.name };
+    compass: d.compass, posSrc: d.posSrc || "toque", gps: d.gpsAtShot || d.gps || (gpsFresh() ? { ...S.gps } : null), blob: file, type: file.type || "image/jpeg", thumb, note: "", created: Date.now(), fileName: f.name };
   await put("photos", rec);
   S.photos.push(rec); S.pagePhotos.push(rec);
   setMode("view"); buildPageSel(); updateListLbl();
   S.sel = rec.id; draw(); openPhotoSheet(rec);
-  const lbl = vid ? `Vídeo ${num} salvo` : `Foto ${num} salva`; toast(d.calibrated ? `${lbl}. Bússola calibrada para esta página.` : lbl);
+  const lbl = vid ? `Vídeo ${num} salvo` : `Foto ${num} salva`; const learned = learnFrom(rec); toast(learned ? `${lbl} · ${learned}` : lbl, learned ? 4000 : 2600);
   if (opt("copy")) saveFile(photoFileName(rec), rec.blob);
 }
 $("#camInput").addEventListener("change", onPhotoPicked);
@@ -832,8 +878,11 @@ $("#savePath").onclick = async () => {
 };
 $("#saveEdit").onclick = async () => {
   const p = S.photos.find(x => x.id === S.draft.id);
+  const moved = Math.abs(p.u - S.draft.u) + Math.abs(p.v - S.draft.v) > 1e-6;
   Object.assign(p, { u: S.draft.u, v: S.draft.v, angle: Math.round(norm360(S.draft.angle)), angleSrc: "ajuste manual" });
-  await put("photos", p); setMode("view"); S.sel = p.id; draw(); openPhotoSheet(p); toast("Posição atualizada");
+  if (moved && p.posSrc === "GPS") p.posSrc = "GPS corrigido";
+  await put("photos", p); const learned = learnFrom(p);
+  setMode("view"); S.sel = p.id; draw(); openPhotoSheet(p); toast(learned ? `Posição atualizada · ${learned}` : "Posição atualizada", learned ? 4000 : 2600);
 };
 
 /* calibração GPS */
@@ -863,9 +912,9 @@ $("#doneCal").onclick = () => {
   if (f && S.cfg.north == null) { S.cfg.north = norm360(f.rot); put("pages", S.cfg); }
   setMode("view"); updateGpsBtn();
   if (f && !S.live) { S.live = true; S.liveCentered = false; setLiveBtn(); startGps(); startCompass(); }
-  if (f) toast(`GPS calibrado. Escala ≈ 1 m = ${(f.scale).toFixed(1).replace(".", ",")} px.`);
+  if (f) toast(`GPS calibrado com ${f.n} pontos · erro médio ±${Math.max(1, Math.round(f.rms))} m${f.dropped ? ` · ${f.dropped} ponto(s) fora descartado(s)` : ""}`, 4500);
 };
-$("#mNorth").onclick = () => { closeMenu(); S.cfg.north = null; put("pages", S.cfg); toast("Calibração da bússola apagada para esta página."); };
+$("#mNorth").onclick = () => { closeMenu(); S.cfg.north = null; S.cfg.northSamples = []; put("pages", S.cfg); toast("Calibração da bússola apagada para esta página."); };
 
 /* menu */
 function closeMenu() { $("#menu").hidden = true; }
@@ -926,7 +975,7 @@ function openPhotoSheet(p) {
     }
     if (a === "delno") openPhotoSheet(p);
     if (a === "delyes") {
-      await del("photos", p.id);
+      await del("photos", p.id); forgetPhoto(p.id);
       S.photos = S.photos.filter(x => x.id !== p.id); S.pagePhotos = S.pagePhotos.filter(x => x.id !== p.id);
       S.sel = null; closeSheet(); buildPageSel(); updateListLbl(); draw(); toast(`${isVideo(p) ? "Vídeo" : "Foto"} ${p.num} excluído(a)`);
     }
